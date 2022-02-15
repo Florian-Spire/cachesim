@@ -1,6 +1,7 @@
 from cachesim import Cache, Obj, Status
+from elasticsearch import Elasticsearch
 from typing import Optional
-import unittest
+import unittest, warnings
 
 
 class NonCache(Cache):
@@ -99,6 +100,57 @@ class TestCaches(unittest.TestCase):
         self.assertEqual(cache.recv(1000, self.d), Status.MISS)  # expired, must be MISS
 
 
+def connect_elasticsearch(domain, port):
+    """
+    Python Elasticsearch Client: connection to elasticsearch
+
+    :param domain: Elasticsearch domain of the running instance
+    :param port: Elasticsearch HTTP interface port 
+    """
+    host = "http://" + domain + ":" + str(port)
+    print(host)
+    es = Elasticsearch([host], timeout = 30, max_retries=10, retry_on_timeout=True)
+    if es.ping():
+        print('Elasticsearch is connected!')
+    else:
+        print('Error: Elasticsearch could not connect!')
+    return es
+
+def es_logs(es, cache):
+    """
+    Fetch the logs data from Elasticsearch using search queries and scroll API. The logs are then replayed (the objects are created and used to send the CDN cache request).
+
+    :param es: Elasticsearch client
+    :param cache: CDN cache to use
+    """
+
+    # The following query returns for each log in the ES cluster the Epoch time (in second), the path = ID of the object, the content lenght = size of the object and maxage = how long content will be cached
+    search_results = es.search(index="batch3-*", scroll = '1m', _source=["path", "contentlength", "maxage"], query={"match_all": {}}, size=10000, sort=[{"@timestamp": {"order": "asc"}}], docvalue_fields=[{"field": "@timestamp","format": "epoch_second"}], version=False)
+    
+    # ES limits the number of results to 10,000. Using the scroll API and scroll ID allows to surpass this limit and to distribute the results in manageable chunks
+    sid = search_results['_scroll_id']
+
+    print("Total number of logs: ", search_results['hits']['total']['value'])
+
+    for log in search_results["hits"]["hits"]:
+        if isinstance(log["_source"]["maxage"], int): obj = Obj(int(log["_source"]["path"]), int(log["_source"]["contentlength"]), int(log["_source"]["maxage"]))
+        else: obj = Obj(int(log["_source"]["path"]), int(log["_source"]["contentlength"]), 300)
+        cache.recv(int(log["fields"]["@timestamp"][0]), obj)
+
+
+    while len(search_results['hits']['hits']) > 0:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            search_results = es.scroll(scroll_id = sid, scroll = '1m', request_timeout = 30)
+        # Update the scroll ID
+        sid = search_results['_scroll_id']
+        for log in search_results["hits"]["hits"]:
+            if isinstance(log["_source"]["maxage"], int): obj = Obj(int(log["_source"]["path"]), int(log["_source"]["contentlength"]), int(log["_source"]["maxage"]))
+            else: obj = Obj(int(log["_source"]["path"]), int(log["_source"]["contentlength"]), 300)
+            cache.recv(int(log["fields"]["@timestamp"][0]), obj)
+
+    es.clear_scroll(body={'scroll_id': sid})
+
 if __name__ == '__main__':
     # define objects
     x = Obj('x', 1000, 300)
@@ -118,3 +170,7 @@ if __name__ == '__main__':
     cache.recv(3.1, d)
     cache.recv(3.2, d)
     cache.recv(1000, d)
+
+    # Requests from ES cluster
+    es = connect_elasticsearch("192.168.100.146", 9200)
+    es_logs(es, cache)
