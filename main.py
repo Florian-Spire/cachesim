@@ -1,4 +1,4 @@
-from cachesim import Cache, Obj, Status
+from cachesim import Cache, Obj, Status, Measurement
 from elasticsearch import Elasticsearch
 from typing import Optional
 import unittest, warnings
@@ -24,8 +24,8 @@ class FIFOCache(Cache):
     First in First out cache model.
     """
 
-    def __init__(self, maxsize: int, logger=None):
-        super().__init__(maxsize, logger)
+    def __init__(self, maxsize: int, measurement=None, logger=None):
+        super().__init__(maxsize, measurement, logger)
 
         # implement a FIFO for the cache itself
         self._cache = []
@@ -159,17 +159,20 @@ if __name__ == '__main__':
     c = Obj('c', 100, 300)
     d = Obj('d', 30, 300)
 
+    # create measurement object (for computing cache hit ratio)
+    measurement = Measurement(writing_frequency=100000)
+
     # create cache
-    cache = ProtectedFIFOCache(400)
+    cache = ProtectedFIFOCache(400, measurement)
 
     # place requests
-    cache.recv(0, a)
-    cache.recv(1, b)
-    cache.recv(2, a)
-    cache.recv(3, d)
-    cache.recv(3.1, d)
-    cache.recv(3.2, d)
-    cache.recv(1000, d)
+    # cache.recv(0, a)
+    # cache.recv(1, b)
+    # cache.recv(2, a)
+    # cache.recv(3, d)
+    # cache.recv(3.1, d)
+    # cache.recv(3.2, d)
+    # cache.recv(1000, d)
 
     # Requests from ES cluster
     es = connect_elasticsearch("192.168.100.146", 9200)

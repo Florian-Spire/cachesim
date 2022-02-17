@@ -1,4 +1,4 @@
-from cachesim import Obj, Status
+from cachesim import Obj, Status, Measurement
 import logging
 from abc import ABC, abstractmethod
 from typing import Optional
@@ -9,7 +9,7 @@ class Cache(ABC):
     Abstract class to provide structure and basic functionalities. Use this to implement your own cache model.
     """
 
-    def __init__(self, maxsize: int, logger: logging.Logger = None):
+    def __init__(self, maxsize: int, measurement: Measurement = None, logger: logging.Logger = None):
         """
         Cache initialization. Overload the init method for custom initialization.
 
@@ -31,6 +31,12 @@ class Cache(ABC):
         else:
             self.__logger = logger
 
+        # setup measurement
+        if measurement is None:
+            self.__measurement = None
+        else:
+            self.__measurement = measurement
+
     @property
     def maxsize(self) -> int:
         """Total size of the cache."""
@@ -40,6 +46,11 @@ class Cache(ABC):
     def clock(self) -> float:
         """Current time."""
         return self.__clock
+
+    @property
+    def measurement(self) -> Measurement:
+        """Current measurement."""
+        return self.__measurement
 
     @clock.setter
     def clock(self, time: float):
@@ -67,6 +78,8 @@ class Cache(ABC):
             if not stored.isexpired(self.clock):
                 # HIT, "serv" object from cache
                 self.__log(stored, Status.HIT)
+                if self.__measurement is not None:
+                    self.__measurement.hit() # increment the hit counter (used for computing cache hit ratio, etc.)
                 return Status.HIT
 
         # MISS: not in cache or expired --> just simulate fetch!
@@ -80,6 +93,8 @@ class Cache(ABC):
             self._store(obj)
 
             self.__log(obj, Status.MISS)
+            if self.__measurement is not None:
+                self.__measurement.miss() # increment the hit counter (used for computing cache hit ratio, etc.)
             return Status.MISS
 
         else:

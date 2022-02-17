@@ -1,7 +1,6 @@
 class Obj:
     def __init__(self, index, size: int, maxage: int):
         """
-
         :param index: Uniq identifier of the object (hash key).
         :param size: Size of the object.
         :param maxage: Maximum caching time, if non positive, not cacheable.
