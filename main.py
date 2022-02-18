@@ -160,7 +160,7 @@ if __name__ == '__main__':
     d = Obj('d', 30, 300)
 
     # create measurement object (for computing cache hit ratio)
-    measurement = Measurement(writing_frequency=100000)
+    measurement = Measurement(writing_frequency=1000000)
 
     # create cache
     cache = ProtectedFIFOCache(400, measurement)

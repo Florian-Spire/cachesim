@@ -99,6 +99,8 @@ class Cache(ABC):
 
         else:
             self.__log(obj, Status.PASS)
+            if self.__measurement is not None:
+                self.__measurement.pass_()
             return Status.PASS
 
     @abstractmethod
