@@ -1,6 +1,7 @@
 from cachesim import Cache, Obj, Status, Measurement
 from elasticsearch import Elasticsearch
 from typing import Optional
+from multiprocessing import Process, Pipe
 import unittest, warnings
 
 
@@ -116,13 +117,15 @@ def connect_elasticsearch(domain, port):
         print('Error: Elasticsearch could not connect!')
     return es
 
-def es_logs(es, cache):
+def es_query(q):
     """
-    Fetch the logs data from Elasticsearch using search queries and scroll API. The logs are then replayed (the objects are created and used to send the CDN cache request).
+    Fetch the logs data from Elasticsearch using search queries and scroll API. The logs are then sent to the main process to be replayed.
 
-    :param es: Elasticsearch client
-    :param cache: CDN cache to use
+    :param q: pipe used to send the logs data to the main process
     """
+
+    # Requests from ES cluster
+    es = connect_elasticsearch("192.168.100.146", 9200)
 
     # The following query returns for each log in the ES cluster the Epoch time (in second), the path = ID of the object, the content lenght = size of the object and maxage = how long content will be cached
     search_results = es.search(index="batch3-*", scroll = '1m', _source=["path", "contentlength", "maxage"], query={"match_all": {}}, size=10000, sort=[{"@timestamp": {"order": "asc"}}], docvalue_fields=[{"field": "@timestamp","format": "epoch_second"}], version=False)
@@ -133,9 +136,7 @@ def es_logs(es, cache):
     print("Total number of logs: ", search_results['hits']['total']['value'])
 
     for log in search_results["hits"]["hits"]:
-        if isinstance(log["_source"]["maxage"], int): obj = Obj(int(log["_source"]["path"]), int(log["_source"]["contentlength"]), int(log["_source"]["maxage"]))
-        else: obj = Obj(int(log["_source"]["path"]), int(log["_source"]["contentlength"]), 300)
-        cache.recv(int(log["fields"]["@timestamp"][0]), obj)
+        q.send([log["fields"]["@timestamp"][0], log["_source"]["path"], log["_source"]["contentlength"], log["_source"]["maxage"]])
 
 
     while len(search_results['hits']['hits']) > 0:
@@ -145,11 +146,11 @@ def es_logs(es, cache):
         # Update the scroll ID
         sid = search_results['_scroll_id']
         for log in search_results["hits"]["hits"]:
-            if isinstance(log["_source"]["maxage"], int): obj = Obj(int(log["_source"]["path"]), int(log["_source"]["contentlength"]), int(log["_source"]["maxage"]))
-            else: obj = Obj(int(log["_source"]["path"]), int(log["_source"]["contentlength"]), 300)
-            cache.recv(int(log["fields"]["@timestamp"][0]), obj)
+            q.send([log["fields"]["@timestamp"][0], log["_source"]["path"], log["_source"]["contentlength"], log["_source"]["maxage"]])
 
     es.clear_scroll(body={'scroll_id': sid})
+    q.send(["End of pipe"])
+    q.close()
 
 if __name__ == '__main__':
     # define objects
@@ -161,7 +162,7 @@ if __name__ == '__main__':
 
     # create measurement object (for computing cache hit ratio)
     measurement = Measurement(writing_frequency=1000000)
-
+    
     # create cache
     cache = ProtectedFIFOCache(400, measurement)
 
@@ -174,6 +175,14 @@ if __name__ == '__main__':
     # cache.recv(3.2, d)
     # cache.recv(1000, d)
 
-    # Requests from ES cluster
-    es = connect_elasticsearch("192.168.100.146", 9200)
-    es_logs(es, cache)
+    logs_consumer, logs_sender = Pipe()
+    p = Process(target=es_query, args=(logs_sender,))
+    p.start()
+
+    # log data: log[0] = timestamp (epoch in second), log[1] = id, log[2] = size, log[3] = maxage
+    log = logs_consumer.recv()
+    while len(log)==4:
+        if isinstance(log[3], int): obj = Obj(int(log[1]), int(log[2]), int(log[3]))
+        else: obj = Obj(int(log[1]), int(log[2]), 300)
+        cache.recv(int(log[0]), obj)
+        log = logs_consumer.recv()
