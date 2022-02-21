@@ -1,7 +1,7 @@
 from cachesim import Cache, Obj, Status, Measurement
 from elasticsearch import Elasticsearch
 from typing import Optional
-from multiprocessing import Process, Pipe
+import threading, queue
 import unittest, warnings
 
 
@@ -110,7 +110,7 @@ def connect_elasticsearch(domain, port):
     """
     host = "http://" + domain + ":" + str(port)
     print(host)
-    es = Elasticsearch([host], timeout = 30, max_retries=10, retry_on_timeout=True)
+    es = Elasticsearch([host], request_timeout = 30, max_retries=10, retry_on_timeout=True)
     if es.ping():
         print('Elasticsearch is connected!')
     else:
@@ -128,7 +128,7 @@ def es_query(q):
     es = connect_elasticsearch("192.168.100.146", 9200)
 
     # The following query returns for each log in the ES cluster the Epoch time (in second), the path = ID of the object, the content lenght = size of the object and maxage = how long content will be cached
-    search_results = es.search(index="batch3-*", scroll = '1m', _source=["path", "contentlength", "maxage"], query={"match_all": {}}, size=10000, sort=[{"@timestamp": {"order": "asc"}}], docvalue_fields=[{"field": "@timestamp","format": "epoch_second"}], version=False)
+    search_results = es.search(index="batch3-*", scroll = '1m', _source=["path", "contentlength", "maxage"], query={"match_all": {}}, size=100000, sort=[{"@timestamp": {"order": "asc"}}], docvalue_fields=[{"field": "@timestamp","format": "epoch_second"}], version=False)
     
     # ES limits the number of results to 10,000. Using the scroll API and scroll ID allows to surpass this limit and to distribute the results in manageable chunks
     sid = search_results['_scroll_id']
@@ -136,8 +136,7 @@ def es_query(q):
     print("Total number of logs: ", search_results['hits']['total']['value'])
 
     for log in search_results["hits"]["hits"]:
-        q.send([log["fields"]["@timestamp"][0], log["_source"]["path"], log["_source"]["contentlength"], log["_source"]["maxage"]])
-
+        q.put([log["fields"]["@timestamp"][0], log["_source"]["path"], log["_source"]["contentlength"], log["_source"]["maxage"]])
 
     while len(search_results['hits']['hits']) > 0:
         with warnings.catch_warnings():
@@ -146,11 +145,11 @@ def es_query(q):
         # Update the scroll ID
         sid = search_results['_scroll_id']
         for log in search_results["hits"]["hits"]:
-            q.send([log["fields"]["@timestamp"][0], log["_source"]["path"], log["_source"]["contentlength"], log["_source"]["maxage"]])
+            q.put([log["fields"]["@timestamp"][0], log["_source"]["path"], log["_source"]["contentlength"], log["_source"]["maxage"]])
 
     es.clear_scroll(body={'scroll_id': sid})
-    q.send(["End of pipe"])
-    q.close()
+    q.put(["End of pipe"])
+    q.task_done()
 
 if __name__ == '__main__':
     # define objects
@@ -175,14 +174,13 @@ if __name__ == '__main__':
     # cache.recv(3.2, d)
     # cache.recv(1000, d)
 
-    logs_consumer, logs_sender = Pipe()
-    p = Process(target=es_query, args=(logs_sender,))
-    p.start()
+    q = queue.Queue()
+    threading.Thread(target=es_query, daemon=True, args=(q,)).start()
 
     # log data: log[0] = timestamp (epoch in second), log[1] = id, log[2] = size, log[3] = maxage
-    log = logs_consumer.recv()
+    log = q.get()
     while len(log)==4:
         if isinstance(log[3], int): obj = Obj(int(log[1]), int(log[2]), int(log[3]))
         else: obj = Obj(int(log[1]), int(log[2]), 300)
         cache.recv(int(log[0]), obj)
-        log = logs_consumer.recv()
+        log = q.get()
