@@ -3,4 +3,5 @@ __pycache__
 .devcontainer
 .vscode
 .idea
-measurements.txt
+*.txt
+*.csv

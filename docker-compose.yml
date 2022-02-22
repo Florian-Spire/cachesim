@@ -1,0 +1,13 @@
+version: "3.9" 
+services:
+  cdn_simulator:
+    build: .
+    logging:
+        driver: "json-file"
+        options:
+            max-file: "5"
+            max-size: "15m"
+    volumes:
+      - type: bind
+        source: ./
+        target: /usr/app/src

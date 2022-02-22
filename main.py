@@ -1,8 +1,12 @@
-from cachesim import Cache, Obj, Status, Measurement
-from elasticsearch import Elasticsearch
+import queue
+import threading
+import unittest
+import warnings
 from typing import Optional
-import threading, queue
-import unittest, warnings
+
+from elasticsearch import Elasticsearch
+
+from cachesim import Cache, Obj, Status, Measurement
 
 
 class NonCache(Cache):
@@ -119,9 +123,10 @@ def connect_elasticsearch(domain, port):
 
 def es_query(q):
     """
-    Fetch the logs data from Elasticsearch using search queries and scroll API. The logs are then sent to the main process to be replayed.
+    Fetch the logs data from Elasticsearch using search queries and scroll API. The logs are then sent to the main
+    process to be replayed.
 
-    :param q: pipe used to send the logs data to the main process
+    :param q: pipe used to send the logs' data to the main process
     """
 
     # Requests from ES cluster
