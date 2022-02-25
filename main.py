@@ -2,6 +2,8 @@ import queue
 import threading
 import unittest
 import warnings
+import datetime
+import dateutil.parser as dp
 from typing import Optional
 
 from elasticsearch import Elasticsearch
@@ -133,7 +135,7 @@ def es_query(q):
     es = connect_elasticsearch("192.168.100.146", 9200)
 
     # The following query returns for each log in the ES cluster the Epoch time (in second), the path = ID of the object, the content lenght = size of the object and maxage = how long content will be cached
-    search_results = es.search(index="batch3-*", scroll = '1m', _source=["path", "contentlength", "maxage"], query={"match_all": {}}, size=100000, sort=[{"@timestamp": {"order": "asc"}}], docvalue_fields=[{"field": "@timestamp","format": "epoch_second"}], version=False)
+    search_results = es.search(index="batch3-*", scroll = '1m', _source=["@timestamp", "path", "contentlength", "maxage"], query={"match_all": {}}, size=100000, sort=[{"@timestamp": {"order": "asc"}}], version=False)
     
     # ES limits the number of results to 10,000. Using the scroll API and scroll ID allows to surpass this limit and to distribute the results in manageable chunks
     sid = search_results['_scroll_id']
@@ -141,7 +143,7 @@ def es_query(q):
     print("Total number of logs: ", search_results['hits']['total']['value'])
 
     for log in search_results["hits"]["hits"]:
-        q.put([log["fields"]["@timestamp"][0], log["_source"]["path"], log["_source"]["contentlength"], log["_source"]["maxage"]])
+        q.put([log["_source"]["@timestamp"], log["_source"]["path"], log["_source"]["contentlength"], log["_source"]["maxage"]])
 
     while len(search_results['hits']['hits']) > 0:
         with warnings.catch_warnings():
@@ -150,7 +152,7 @@ def es_query(q):
         # Update the scroll ID
         sid = search_results['_scroll_id']
         for log in search_results["hits"]["hits"]:
-            q.put([log["fields"]["@timestamp"][0], log["_source"]["path"], log["_source"]["contentlength"], log["_source"]["maxage"]])
+            q.put([log["_source"]["@timestamp"], log["_source"]["path"], log["_source"]["contentlength"], log["_source"]["maxage"]])
 
     es.clear_scroll(body={'scroll_id': sid})
     q.put(["End of pipe"])
@@ -187,5 +189,5 @@ if __name__ == '__main__':
     while len(log)==4:
         if isinstance(log[3], int): obj = Obj(int(log[1]), int(log[2]), int(log[3]))
         else: obj = Obj(int(log[1]), int(log[2]), 300)
-        cache.recv(int(log[0]), obj)
+        cache.recv(int(dp.parse(log[0]).timestamp()), obj)
         log = q.get()
