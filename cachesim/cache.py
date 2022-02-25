@@ -1,6 +1,7 @@
 from cachesim import Obj, Status, Measurement
 import logging
 from abc import ABC, abstractmethod
+import multiprocessing as mp
 from typing import Optional
 
 
@@ -9,7 +10,7 @@ class Cache(ABC):
     Abstract class to provide structure and basic functionalities. Use this to implement your own cache model.
     """
 
-    def __init__(self, maxsize: int, measurement: Measurement = None, logger: logging.Logger = None):
+    def __init__(self, maxsize: int, measurement_queue: mp.Queue = None, logger: logging.Logger = None):
         """
         Cache initialization. Overload the init method for custom initialization.
 
@@ -32,10 +33,10 @@ class Cache(ABC):
             self.__logger = logger
 
         # setup measurement
-        if measurement is None:
+        if measurement_queue is None:
             self.__measurement = None
         else:
-            self.__measurement = measurement
+            self.__q = measurement_queue
 
     @property
     def maxsize(self) -> int:
@@ -78,8 +79,8 @@ class Cache(ABC):
             if not stored.isexpired(self.clock):
                 # HIT, "serv" object from cache
                 self.__log(stored, Status.HIT)
-                if self.__measurement is not None:
-                    self.__measurement.hit() # increment the hit counter (used for computing cache hit ratio, etc.)
+                if self.__q is not None:
+                    self.__q.put([time, 'h']) 
                 return Status.HIT
 
         # MISS: not in cache or expired --> just simulate fetch!
@@ -93,14 +94,14 @@ class Cache(ABC):
             self._store(obj)
 
             self.__log(obj, Status.MISS)
-            if self.__measurement is not None:
-                self.__measurement.miss() # increment the hit counter (used for computing cache hit ratio, etc.)
+            if self.__q is not None:
+                self.__q.put([time, 'm']) 
             return Status.MISS
 
         else:
             self.__log(obj, Status.PASS)
-            if self.__measurement is not None:
-                self.__measurement.pass_()
+            if self.__q is not None:
+                self.__q.put([time, 'p'])
             return Status.PASS
 
     @abstractmethod

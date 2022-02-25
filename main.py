@@ -2,9 +2,9 @@ import queue
 import threading
 import unittest
 import warnings
-import datetime
 import dateutil.parser as dp
 from typing import Optional
+import multiprocessing as mp
 
 from elasticsearch import Elasticsearch
 
@@ -155,7 +155,7 @@ def es_query(q):
             q.put([log["_source"]["@timestamp"], log["_source"]["path"], log["_source"]["contentlength"], log["_source"]["maxage"]])
 
     es.clear_scroll(body={'scroll_id': sid})
-    q.put(["End of pipe"])
+    q.put(None)
     q.task_done()
 
 if __name__ == '__main__':
@@ -167,10 +167,11 @@ if __name__ == '__main__':
     d = Obj('d', 30, 300)
 
     # create measurement object (for computing cache hit ratio)
-    measurement = Measurement(writing_frequency=1000000)
+    measurement_queue = mp.Queue()
+    p = mp.Process(target=Measurement, args=(measurement_queue, 1000000, 60))
     
     # create cache
-    cache = ProtectedFIFOCache(400, measurement)
+    cache = ProtectedFIFOCache(400, measurement_queue)
 
     # place requests
     # cache.recv(0, a)
@@ -183,6 +184,7 @@ if __name__ == '__main__':
 
     q = queue.Queue()
     threading.Thread(target=es_query, daemon=True, args=(q,)).start()
+    p.start()
 
     # log data: log[0] = timestamp (epoch in second), log[1] = id, log[2] = size, log[3] = maxage
     log = q.get()
@@ -191,3 +193,4 @@ if __name__ == '__main__':
         else: obj = Obj(int(log[1]), int(log[2]), 300)
         cache.recv(int(dp.parse(log[0]).timestamp()), obj)
         log = q.get()
+    measurement_queue.put(None)
