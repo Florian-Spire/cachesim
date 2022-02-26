@@ -1,7 +1,8 @@
-from multiprocessing import Process, Queue
+from cachesim import Status
 import csv
 import datetime as DT
 import multiprocessing
+from collections import Counter
 
 class Measurement:
     """
@@ -39,7 +40,6 @@ class Measurement:
         """
         Measurement destructor.
         """
-        self.__q.task_done()
         if self.__writring_frequency!=0:
             self.__file.close() # Close the file used for writing the measurements results
         if self.__writring_time!=0:
@@ -47,14 +47,11 @@ class Measurement:
 
     def receive_status(self):
         status = self.__q.get()
-
         while status is not None:
-            if status[1]=='h':
-                self.hit()
-            elif status[1] == 'p':
-                self.pass_()
-            elif status[1] == 'm':
-                self.miss()
+            count_status = Counter(status[1])
+            self.__hit+=count_status[Status.HIT]
+            self.__pass+=count_status[Status.PASS]
+            self.__miss+=count_status[Status.MISS]
 
             if (self.__hit+self.__miss+self.__pass)%self.__writring_frequency==0:
                 self.write_in_file()

@@ -29,8 +29,8 @@ class FIFOCache(Cache):
     First in First out cache model.
     """
 
-    def __init__(self, maxsize: int, measurement=None, logger=None):
-        super().__init__(maxsize, measurement, logger)
+    def __init__(self, maxsize: int, logger=None):
+        super().__init__(maxsize, logger)
 
         # implement a FIFO for the cache itself
         self._cache = []
@@ -159,7 +159,7 @@ if __name__ == '__main__':
 
     # create measurement object (for computing cache hit ratio)
     measurement_queue = mp.Queue()
-    p_measurement = mp.Process(target=Measurement, args=(measurement_queue, 1000000, 60))
+    p_measurement = mp.Process(target=Measurement, args=(measurement_queue, 1000000, 40))
     
     # create cache
     cache = ProtectedFIFOCache(400)
@@ -188,10 +188,12 @@ if __name__ == '__main__':
 
     search_results = q.get()
     while search_results is not None:
+        status_list=[]
         for log in search_results:
             if isinstance(log["_source"]["maxage"], int): obj = Obj(int(log["_source"]["path"]), int(log["_source"]["contentlength"]), int(log["_source"]["maxage"]))
             else: obj = Obj(int(log["_source"]["path"]), int(log["_source"]["contentlength"]), 300)
-            cache.recv(int(log["fields"]["@timestamp"][0]), obj)
+            status_list.append(cache.recv(int(log["fields"]["@timestamp"][0]), obj))
+        measurement_queue.put([int(search_results[-1]["fields"]["@timestamp"][0]), status_list])
         search_results = q.get()
     measurement_queue.put(None)
     measurement_queue.close()
