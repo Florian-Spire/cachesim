@@ -1,4 +1,4 @@
-from cachesim import Obj, Status, Measurement
+from cachesim import Obj, Status
 import logging
 from abc import ABC, abstractmethod
 import multiprocessing as mp
@@ -41,11 +41,6 @@ class Cache(ABC):
     def clock(self) -> float:
         """Current time."""
         return self.__clock
-
-    @property
-    def measurement(self) -> Measurement:
-        """Current measurement."""
-        return self.__measurement
 
     @clock.setter
     def clock(self, time: float):

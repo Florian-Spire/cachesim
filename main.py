@@ -6,7 +6,7 @@ import time
 
 from elasticsearch import Elasticsearch
 
-from cachesim import Cache, Obj, Status, Measurement
+from cachesim import Cache, Obj, Status, Analyzer
 
 
 class NonCache(Cache):
@@ -126,7 +126,7 @@ def es_query(q):
     Fetch the logs data from Elasticsearch using search queries and scroll API. The logs are then sent to the main
     process to be replayed.
 
-    :param q: pipe used to send the logs' data to the main process
+    :param q: multiprocessing queue used to send the logs' data to the main process
     """
 
     # Requests from ES cluster
@@ -154,13 +154,12 @@ def es_query(q):
     q.put(None)
     q.task_done()
 
-if __name__ == '__main__':
-    start = time.time()
+def processes_coordination():
+    """
+    Manage and coordinate every processes used for running for this program (elasticsearch fetching process, cache simulation process, analyzer process).
+    This function is in charge of creating the processes, establishing the communication of the data between the processes and terminating them.
+    """
 
-    # create measurement object (for computing cache hit ratio)
-    measurement_queue = mp.Queue()
-    p_measurement = mp.Process(target=Measurement, args=(measurement_queue, 1000000, 40))
-    
     # create cache
     cache = ProtectedFIFOCache(400)
 
@@ -181,29 +180,48 @@ if __name__ == '__main__':
     # cache.recv(3.2, d)
     # cache.recv(1000, d)
 
-    q = mp.Queue()
-    p_query = mp.Process(target=es_query, args=(q,))
-    p_query.start()
-    p_measurement.start()
 
-    search_results = q.get()
+    # create the queue and process in charge of fetching the data from elasticsearch
+    query_queue = mp.Queue()
+    p_query = mp.Process(target=es_query, args=(query_queue,))
+
+    # create the queue and process in charge of analyzing the data resulting from the cache simulation
+    analyzer_queue = mp.Queue()
+    p_analyzer = mp.Process(target=Analyzer, args=(analyzer_queue, 40, 1000000,))
+
+    # start the processes
+    p_query.start()
+    p_analyzer.start()
+
+    # receive the data from the process running the es queries, send them to the process in charge of the cache simulation and send the simulation data to the analyzer
+    search_results = query_queue.get() # data are received from the process fetching es data
     while search_results is not None:
-        status_list=[]
+        status_list=[] # list of status (hit, miss or pass) corresponding to the decisions made by the simulator
         for log in search_results:
             if isinstance(log["_source"]["maxage"], int): obj = Obj(int(log["_source"]["path"]), int(log["_source"]["contentlength"]), int(log["_source"]["maxage"]))
-            else: obj = Obj(int(log["_source"]["path"]), int(log["_source"]["contentlength"]), 300)
-            status_list.append(cache.recv(int(log["fields"]["@timestamp"][0]), obj))
-        measurement_queue.put([int(search_results[-1]["fields"]["@timestamp"][0]), status_list])
-        search_results = q.get()
-    measurement_queue.put(None)
-    measurement_queue.close()
-    q.close()
+            else: obj = Obj(int(log["_source"]["path"]), int(log["_source"]["contentlength"]), 300) # default value if maxage is not indicated (300)
+            status_list.append(cache.recv(int(log["fields"]["@timestamp"][0]), obj)) # keep trace of the status result from the cache simulation
+        analyzer_queue.put([int(search_results[-1]["fields"]["@timestamp"][0]), status_list]) # last timestamp and list of status are sent to the analyzer at the end of the request
+        search_results = query_queue.get() # data are received from the process fetching es data
+
+
+    analyzer_queue.put(None) # notify to the analyzer the end of the incoming data 
+
+    # close queues and processes
+    analyzer_queue.close() 
+    query_queue.close()
+    p_query.terminate()
+    p_analyzer.terminate()
+
+
+if __name__ == '__main__':
+    start = time.time()
+
+    processes_coordination()
 
     end = time.time()
 
+    # Write on the disk and stdout the final time needed for running the entire program
     with open("perf.txt",'w',encoding = 'utf-8') as f:
         print("Running time: ", end-start, "s", file=f)
     print("Running time: ", end-start, "s")
-
-    p_query.terminate()
-    p_measurement.terminate()
