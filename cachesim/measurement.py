@@ -1,13 +1,14 @@
 from multiprocessing import Process, Queue
 import csv
 import datetime as DT
+import multiprocessing
 
 class Measurement:
     """
     Class to provide various measurements related to the cache performance.
     """
     
-    def __init__(self, cache_queue, writing_frequency=0, writing_time=60):
+    def __init__(self, cache_queue: multiprocessing.Queue, writing_frequency=0, writing_time=60):
         """
         Measurement initialization.
         :param writing_frequency: frequency used to write the measurements results in txt file (0 for not writing anything in file), e.g: 1,000 will write the results once every 1,000 objects processed 
@@ -38,6 +39,7 @@ class Measurement:
         """
         Measurement destructor.
         """
+        self.__q.task_done()
         if self.__writring_frequency!=0:
             self.__file.close() # Close the file used for writing the measurements results
         if self.__writring_time!=0:
@@ -46,8 +48,7 @@ class Measurement:
     def receive_status(self):
         status = self.__q.get()
 
-        while len(status)==2:
-            status = self.__q.get()
+        while status is not None:
             if status[1]=='h':
                 self.hit()
             elif status[1] == 'p':
@@ -61,6 +62,7 @@ class Measurement:
             if status[0]-self.__last_time>=self.__writring_time:
                 self.__last_time = status[0]
                 self.write_time()
+            status = self.__q.get()
 
 
     def hit(self):

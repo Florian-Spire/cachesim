@@ -1,10 +1,8 @@
-import queue
-import threading
 import unittest
 import warnings
-import dateutil.parser as dp
 from typing import Optional
 import multiprocessing as mp
+import time
 
 from elasticsearch import Elasticsearch
 
@@ -135,15 +133,14 @@ def es_query(q):
     es = connect_elasticsearch("192.168.100.146", 9200)
 
     # The following query returns for each log in the ES cluster the Epoch time (in second), the path = ID of the object, the content lenght = size of the object and maxage = how long content will be cached
-    search_results = es.search(index="batch3-*", scroll = '1m', _source=["@timestamp", "path", "contentlength", "maxage"], query={"match_all": {}}, size=100000, sort=[{"@timestamp": {"order": "asc"}}], version=False)
+    search_results = es.search(index="batch3-*", scroll = '1m', _source=["path", "contentlength", "maxage"], query={"match_all": {}}, size=100000, docvalue_fields=[{"field": "@timestamp","format": "epoch_second"}], sort=[{"@timestamp": {"order": "asc"}}], version=False)
     
     # ES limits the number of results to 10,000. Using the scroll API and scroll ID allows to surpass this limit and to distribute the results in manageable chunks
     sid = search_results['_scroll_id']
 
     print("Total number of logs: ", search_results['hits']['total']['value'])
 
-    for log in search_results["hits"]["hits"]:
-        q.put([log["_source"]["@timestamp"], log["_source"]["path"], log["_source"]["contentlength"], log["_source"]["maxage"]])
+    q.put(search_results["hits"]["hits"])
 
     while len(search_results['hits']['hits']) > 0:
         with warnings.catch_warnings():
@@ -151,27 +148,29 @@ def es_query(q):
             search_results = es.scroll(scroll_id = sid, scroll = '1m', request_timeout = 30)
         # Update the scroll ID
         sid = search_results['_scroll_id']
-        for log in search_results["hits"]["hits"]:
-            q.put([log["_source"]["@timestamp"], log["_source"]["path"], log["_source"]["contentlength"], log["_source"]["maxage"]])
+        q.put(search_results["hits"]["hits"])
 
     es.clear_scroll(body={'scroll_id': sid})
     q.put(None)
     q.task_done()
 
 if __name__ == '__main__':
-    # define objects
-    x = Obj('x', 1000, 300)
-    a = Obj('a', 100, 300)
-    b = Obj('b', 100, 300)
-    c = Obj('c', 100, 300)
-    d = Obj('d', 30, 300)
+    start = time.time()
 
     # create measurement object (for computing cache hit ratio)
     measurement_queue = mp.Queue()
-    p = mp.Process(target=Measurement, args=(measurement_queue, 1000000, 60))
+    p_measurement = mp.Process(target=Measurement, args=(measurement_queue, 1000000, 60))
     
     # create cache
-    cache = ProtectedFIFOCache(400, measurement_queue)
+    cache = ProtectedFIFOCache(400)
+
+    
+    # define objects
+    # x = Obj('x', 1000, 300)
+    # a = Obj('a', 100, 300)
+    # b = Obj('b', 100, 300)
+    # c = Obj('c', 100, 300)
+    # d = Obj('d', 30, 300)
 
     # place requests
     # cache.recv(0, a)
@@ -182,15 +181,27 @@ if __name__ == '__main__':
     # cache.recv(3.2, d)
     # cache.recv(1000, d)
 
-    q = queue.Queue()
-    threading.Thread(target=es_query, daemon=True, args=(q,)).start()
-    p.start()
+    q = mp.Queue()
+    p_query = mp.Process(target=es_query, args=(q,))
+    p_query.start()
+    p_measurement.start()
 
-    # log data: log[0] = timestamp (epoch in second), log[1] = id, log[2] = size, log[3] = maxage
-    log = q.get()
-    while len(log)==4:
-        if isinstance(log[3], int): obj = Obj(int(log[1]), int(log[2]), int(log[3]))
-        else: obj = Obj(int(log[1]), int(log[2]), 300)
-        cache.recv(int(dp.parse(log[0]).timestamp()), obj)
-        log = q.get()
+    search_results = q.get()
+    while search_results is not None:
+        for log in search_results:
+            if isinstance(log["_source"]["maxage"], int): obj = Obj(int(log["_source"]["path"]), int(log["_source"]["contentlength"]), int(log["_source"]["maxage"]))
+            else: obj = Obj(int(log["_source"]["path"]), int(log["_source"]["contentlength"]), 300)
+            cache.recv(int(log["fields"]["@timestamp"][0]), obj)
+        search_results = q.get()
     measurement_queue.put(None)
+    measurement_queue.close()
+    q.close()
+
+    end = time.time()
+
+    with open("perf.txt",'w',encoding = 'utf-8') as f:
+        print("Running time: ", end-start, "s", file=f)
+    print("Running time: ", end-start, "s")
+
+    p_query.terminate()
+    p_measurement.terminate()

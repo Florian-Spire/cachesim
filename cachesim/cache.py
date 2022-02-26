@@ -34,7 +34,7 @@ class Cache(ABC):
 
         # setup measurement
         if measurement_queue is None:
-            self.__measurement = None
+            self.__q = None
         else:
             self.__q = measurement_queue
 
