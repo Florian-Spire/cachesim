@@ -123,13 +123,15 @@ def connect_elasticsearch(domain, port):
         print('Error: Elasticsearch could not connect!')
     return es
 
-def es_query(q, index_name):
+def es_query(q, index_name, search_size=10000, stop_after=-1):
     """
     Fetch the logs data from Elasticsearch using search queries and scroll API. The logs are then sent to the main
     process to be replayed.
 
     :param q: multiprocessing queue used to send the logs' data to the main process
     :param index_name: name of the ES index used for running the search
+    :param search_size: number of documents returned by each individual search (by default limited to 10,000 in ES)
+    :param stop_after: the search stop after this number of data processed, -1 for not setting any limit
     """
 
     # Requests from ES cluster
@@ -142,7 +144,7 @@ def es_query(q, index_name):
             return
 
     # The following query returns for each log in the ES cluster the Epoch time (in second), the path = ID of the object, the content lenght = size of the object and maxage = how long content will be cached
-    search_results = es.search(index=index_name, scroll = '1m', _source=["path", "contentlength", "maxage"], query={"match_all": {}}, size=1, docvalue_fields=[{"field": "@timestamp","format": "epoch_second"}], sort=[{"@timestamp": {"order": "asc"}}], version=False)
+    search_results = es.search(index=index_name, scroll = '1m', _source=["path", "contentlength", "maxage"], query={"match_all": {}}, size=search_size, docvalue_fields=[{"field": "@timestamp","format": "epoch_second"}], sort=[{"@timestamp": {"order": "asc"}}], version=False)
     
     # ES limits the number of results to 10,000. Using the scroll API and scroll ID allows to surpass this limit and to distribute the results in manageable chunks
     sid = search_results['_scroll_id']
@@ -150,21 +152,28 @@ def es_query(q, index_name):
     print("Total number of logs: ", search_results['hits']['total']['value'])
 
     q.put(search_results["hits"]["hits"])
+    total_processed=search_size # Total number of data already processed
 
-    while len(search_results['hits']['hits']) > 0:
-        search_results = es.scroll(scroll_id = sid, scroll = '1m', request_timeout = 30)
+    search_results = es.scroll(scroll_id = sid, scroll = '1m')
+    while len(search_results['hits']['hits']) > 0 and (stop_after==-1 or stop_after>total_processed):
         # Update the scroll ID
         sid = search_results['_scroll_id']
         q.put(search_results["hits"]["hits"])
+        search_results = es.scroll(scroll_id = sid, scroll = '1m')
+        total_processed+=search_size
 
     es.clear_scroll(scroll_id = sid)
     q.put(None)
     q.close()
 
-def processes_coordination():
+def processes_coordination(index_name, default_maxage=0):
     """
     Manage and coordinate every processes used for running for this program (elasticsearch fetching process, cache simulation process, analyzer process).
     This function is in charge of creating the processes, establishing the communication of the data between the processes and terminating them.
+
+    :param index_name: name of the ES index used for running the search
+    :param default_maxage: default maxage value if not indicated in HTTP cache header
+
     """
 
     # create cache
@@ -187,14 +196,15 @@ def processes_coordination():
     # cache.recv(3.2, d)
     # cache.recv(1000, d)
 
+    search_size=100000 # number of documents returned by each individual search
 
     # create the queue and process in charge of fetching the data from elasticsearch
     query_queue = mp.Queue()
-    p_query = mp.Process(target=es_query, args=(query_queue,"batch3-*"))
+    p_query = mp.Process(target=es_query, args=(query_queue, index_name, search_size,))
 
     # create the queue and process in charge of analyzing the data resulting from the cache simulation
     analyzer_queue = mp.Queue()
-    p_analyzer = mp.Process(target=Analyzer, args=(analyzer_queue, 30, 1000000,))
+    p_analyzer = mp.Process(target=Analyzer, args=(analyzer_queue, 30,))
 
     # start the processes
     p_query.start()
@@ -206,7 +216,7 @@ def processes_coordination():
         status_list=[] # list of status (hit, miss or pass) corresponding to the decisions made by the simulator
         for log in search_results:
             if isinstance(log["_source"]["maxage"], int): obj = Obj(int(log["_source"]["path"]), int(log["_source"]["contentlength"]), int(log["_source"]["maxage"]))
-            else: obj = Obj(int(log["_source"]["path"]), int(log["_source"]["contentlength"]), 300) # default value if maxage is not indicated (300)
+            else: obj = Obj(int(log["_source"]["path"]), int(log["_source"]["contentlength"]), default_maxage) # default value if maxage is not indicated (300)
             status_list.append(cache.recv(int(log["fields"]["@timestamp"][0]), obj)) # keep trace of the status result from the cache simulation
         analyzer_queue.put([int(search_results[-1]["fields"]["@timestamp"][0]), status_list]) # last timestamp and list of status are sent to the analyzer at the end of the request
         search_results = query_queue.get() # data are received from the process fetching es data
@@ -217,7 +227,7 @@ def processes_coordination():
 if __name__ == '__main__':
     start = time.time()
 
-    processes_coordination()
+    processes_coordination(index_name="performance-test", default_maxage=300)
 
     end = time.time()
 

@@ -26,6 +26,7 @@ class Analyzer:
         self.__hit = 0  # Number of times the cache returns a "hit" answer
         self.__miss = 0  # Number of times the cache returns a "miss" answer
         self.__pass = 0  # Number of times the cache returns a "pass" answer
+        self.__previous = [0,0,0] # Previous values for hit, miss and pass
 
         self.__last_time = 0  # Last timestamp registered by the analyzer object
         self.__last_total = 0  # Keep trace of the last total number of analyzes done
@@ -74,6 +75,7 @@ class Analyzer:
         status = self.__q.get()  # Receive the data from the cache simulation process
 
         while status is not None:  # None is sent by the cache simulation when the simulation is over
+            timestamp = status[0]
             count_status = Counter(status[1])  # Count the number of hit, pass and miss received
 
             # Corresponding status counter are incremented accordingly to the data received
@@ -87,24 +89,25 @@ class Analyzer:
                 self.save_frequency_results()
 
             # If time conditions are met, start to write the CHR results
-            if status[0] - self.__last_time >= self.__frequency_time != 0:
-                self.__last_time = status[0]
+            if timestamp - self.__last_time >= self.__frequency_time != 0:
+                self.__last_time = timestamp
                 self.save_time_results()
 
             status = self.__q.get()
 
-        # End of the data, write the last analyzes (if not done yet) before end of the function
-        if (self.__hit + self.__miss + self.__pass) != self.__last_total:
-            if self.__frequency_number != 0:
+        # End of the data: write the last analyzes before end of the function
+        if (self.__hit + self.__miss + self.__pass) != self.__last_total and self.__frequency_number != 0:
                 self.__last_total = self.__hit + self.__miss + self.__pass
                 self.save_frequency_results()
-            if self.__frequency_time != 0:
-                self.__last_time = status[0]
-                self.save_time_results()
+
+        if timestamp != self.__last_time and self.__frequency_time != 0:
+            self.__last_time = timestamp
+            self.save_time_results()
         
         if self.__CHR_final and self.__last_total!=0:
             with open(self.__file_name_CHR_final + ".txt",'w',encoding = 'utf-8') as f:
-                print("Final cache hit ratio: ", self.cache_hit_ratio(), "s", file=f)
+                print("Number of data processed: ", self.__hit + self.__miss + self.__pass, file=f)
+                print("Cache hit ratio: ", self.cache_hit_ratio()*100, "%", file=f)
 
     def hit(self):
         """
