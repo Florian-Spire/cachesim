@@ -1,5 +1,4 @@
 import unittest
-import warnings
 from typing import Optional
 import multiprocessing as mp
 import time
@@ -7,6 +6,9 @@ import time
 from elasticsearch import Elasticsearch
 
 from cachesim import Cache, Obj, Status, Analyzer
+
+import warnings
+warnings.filterwarnings('ignore', 'Elasticsearch built-in security.*', ) # Ignore ES security warning
 
 
 class NonCache(Cache):
@@ -121,19 +123,26 @@ def connect_elasticsearch(domain, port):
         print('Error: Elasticsearch could not connect!')
     return es
 
-def es_query(q):
+def es_query(q, index_name):
     """
     Fetch the logs data from Elasticsearch using search queries and scroll API. The logs are then sent to the main
     process to be replayed.
 
     :param q: multiprocessing queue used to send the logs' data to the main process
+    :param index_name: name of the ES index used for running the search
     """
 
     # Requests from ES cluster
     es = connect_elasticsearch("192.168.100.146", 9200)
 
+    # End of task if the indices does not exist in ES 
+    if not es.indices.exists(index=index_name, allow_no_indices=False):
+            q.put(None)
+            q.close()
+            return
+
     # The following query returns for each log in the ES cluster the Epoch time (in second), the path = ID of the object, the content lenght = size of the object and maxage = how long content will be cached
-    search_results = es.search(index="batch3-*", scroll = '1m', _source=["path", "contentlength", "maxage"], query={"match_all": {}}, size=100000, docvalue_fields=[{"field": "@timestamp","format": "epoch_second"}], sort=[{"@timestamp": {"order": "asc"}}], version=False)
+    search_results = es.search(index=index_name, scroll = '1m', _source=["path", "contentlength", "maxage"], query={"match_all": {}}, size=1, docvalue_fields=[{"field": "@timestamp","format": "epoch_second"}], sort=[{"@timestamp": {"order": "asc"}}], version=False)
     
     # ES limits the number of results to 10,000. Using the scroll API and scroll ID allows to surpass this limit and to distribute the results in manageable chunks
     sid = search_results['_scroll_id']
@@ -143,16 +152,14 @@ def es_query(q):
     q.put(search_results["hits"]["hits"])
 
     while len(search_results['hits']['hits']) > 0:
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            search_results = es.scroll(scroll_id = sid, scroll = '1m', request_timeout = 30)
+        search_results = es.scroll(scroll_id = sid, scroll = '1m', request_timeout = 30)
         # Update the scroll ID
         sid = search_results['_scroll_id']
         q.put(search_results["hits"]["hits"])
 
-    es.clear_scroll(body={'scroll_id': sid})
+    es.clear_scroll(scroll_id = sid)
     q.put(None)
-    q.task_done()
+    q.close()
 
 def processes_coordination():
     """
@@ -183,11 +190,11 @@ def processes_coordination():
 
     # create the queue and process in charge of fetching the data from elasticsearch
     query_queue = mp.Queue()
-    p_query = mp.Process(target=es_query, args=(query_queue,))
+    p_query = mp.Process(target=es_query, args=(query_queue,"batch3-*"))
 
     # create the queue and process in charge of analyzing the data resulting from the cache simulation
     analyzer_queue = mp.Queue()
-    p_analyzer = mp.Process(target=Analyzer, args=(analyzer_queue, 40, 1000000,))
+    p_analyzer = mp.Process(target=Analyzer, args=(analyzer_queue, 30, 1000000,))
 
     # start the processes
     p_query.start()
@@ -204,14 +211,7 @@ def processes_coordination():
         analyzer_queue.put([int(search_results[-1]["fields"]["@timestamp"][0]), status_list]) # last timestamp and list of status are sent to the analyzer at the end of the request
         search_results = query_queue.get() # data are received from the process fetching es data
 
-
-    analyzer_queue.put(None) # notify to the analyzer the end of the incoming data 
-
-    # close queues and processes
-    analyzer_queue.close() 
-    query_queue.close()
-    p_query.terminate()
-    p_analyzer.terminate()
+    analyzer_queue.put(None) # notify to the analyzer the end of the incoming data
 
 
 if __name__ == '__main__':
