@@ -145,22 +145,23 @@ def es_query(q, index_name, search_size=10000, stop_after=-1):
             q.close()
             return
 
-    #ES point-in-time
-    pit = es.open_point_in_time(index=index_name, keep_alive="1m")['id']
-
     # The following query returns for each log in the ES cluster the Epoch time (in second), the path = ID of the object, the content lenght = size of the object and maxage = how long content will be cached
-    search_results = es.search(_source=["path", "contentlength", "maxage"], query={"match_all": {}}, size=search_size, docvalue_fields=[{"field": "@timestamp","format": "epoch_second"}], sort=[{"@timestamp": {"order": "asc"}}], pit={"id":  pit, "keep_alive": "1m"}, version=False)
+    search_results = es.search(index=index_name, scroll = '1m', _source=["path", "contentlength", "maxage"], query={"match_all": {}}, size=search_size, docvalue_fields=[{"field": "@timestamp","format": "epoch_second"}], sort=[{"@timestamp": {"order": "asc"}}], version=False)
+
+    # ES limits the number of results to 10,000. Using the scroll API and scroll ID allows to surpass this limit and to distribute the results in manageable chunks
+    sid = search_results['_scroll_id']
 
     print("Total number of logs: ", search_results['hits']['total']['value'])
     total_processed=search_size # Total number of data already processed
 
     while len(search_results['hits']['hits']) > 0 and (stop_after==-1 or stop_after>total_processed):
         # Update the scroll ID
-        last_value = search_results["hits"]["hits"][-1]["sort"]
+        sid = search_results['_scroll_id']
         q.send(search_results["hits"]["hits"])
-        search_results = es.search(_source=["path", "contentlength", "maxage"], search_after=last_value, query={"match_all": {}}, size=search_size, docvalue_fields=[{"field": "@timestamp","format": "epoch_second"}], sort=[{"@timestamp": {"order": "asc"}}], pit={"id":  pit, "keep_alive": "5m"}, version=False)
+        search_results = es.scroll(scroll_id = sid, scroll = '1m')
         total_processed+=search_size
 
+    es.clear_scroll(scroll_id = sid)
     print("End of query")
     q.send(None)
     q.close()
