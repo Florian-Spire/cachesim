@@ -1,6 +1,8 @@
 import unittest
 from typing import Optional
 import multiprocessing as mp
+from itertools import repeat
+from multiprocessing import Pool
 import time
 
 from elasticsearch import Elasticsearch
@@ -166,6 +168,22 @@ def es_query(q, index_name, search_size=10000, stop_after=-1):
     q.put(None)
     q.close()
 
+def cache_simulation(search_results, maxage, cache):
+    """
+    Search results data are sent to the simulation.
+
+    :param search_results: multiprocessing queue used to send the logs' data to the main process
+    :param maxage: default maxage used if not indicated in HTTP cache header
+    :param cache: cache used for the simulation
+    """
+    status_list=[] # list of status (hit, miss or pass) corresponding to the decisions made by the simulator
+    for log in search_results:
+        if isinstance(log["_source"]["maxage"], int): obj = Obj(int(log["_source"]["path"]), int(log["_source"]["contentlength"]), int(log["_source"]["maxage"]))
+        else: obj = Obj(int(log["_source"]["path"]), int(log["_source"]["contentlength"]), maxage) # default value if maxage is not indicated
+        status_list.append(cache.recv(int(log["fields"]["@timestamp"][0]), obj)) # keep trace of the status result from the cache simulation
+    return status_list
+
+
 def processes_coordination(index_name, default_maxage=0):
     """
     Manage and coordinate every processes used for running for this program (elasticsearch fetching process, cache simulation process, analyzer process).
@@ -177,7 +195,19 @@ def processes_coordination(index_name, default_maxage=0):
     """
 
     # create cache
-    cache = ProtectedFIFOCache(400)
+    cache = ProtectedFIFOCache(50)
+    cache2 = ProtectedFIFOCache(100)
+    cache3 = ProtectedFIFOCache(200)
+    cache4 = ProtectedFIFOCache(400)
+    cache5 = ProtectedFIFOCache(800)
+    cache6 = ProtectedFIFOCache(1600)
+    cache7 = ProtectedFIFOCache(3000)
+    cache8 = ProtectedFIFOCache(5000)
+    cache9 = ProtectedFIFOCache(10000)
+    cache10 = ProtectedFIFOCache(20000)
+    cache11 = ProtectedFIFOCache(50000)
+    cache12 = ProtectedFIFOCache(100000)
+    caches = [cache, cache2, cache3, cache4, cache5, cache6, cache7, cache8, cache9, cache10, cache11, cache12]
 
     
     # define objects
@@ -203,31 +233,49 @@ def processes_coordination(index_name, default_maxage=0):
     p_query = mp.Process(target=es_query, args=(query_queue, index_name, search_size,))
 
     # create the queue and process in charge of analyzing the data resulting from the cache simulation
-    analyzer_queue = mp.Queue()
-    p_analyzer = mp.Process(target=Analyzer, args=(analyzer_queue, 30,))
+    analyzer_queues = [mp.Queue() for i in range(12)]
+
+    p_analyzer = mp.Process(target=Analyzer, args=(analyzer_queues[0],30,1000000,True,"CHR_PFIFO50_time", "CHR_PFIFO50_regular", "CHR_PFIFO50_final",))
+    p_analyzer2 = mp.Process(target=Analyzer, args=(analyzer_queues[1],30,1000000,True,"CHR_PFIFO100_time", "CHR_PFIFO100_regular", "CHR_PFIFO100_final",))
+    p_analyzer3 = mp.Process(target=Analyzer, args=(analyzer_queues[2],30,1000000,True,"CHR_PFIFO200_time", "CHR_PFIFO200_regular", "CHR_PFIFO200_final",))
+    p_analyzer4 = mp.Process(target=Analyzer, args=(analyzer_queues[3],30,1000000,True,"CHR_PFIFO400_time", "CHR_PFIFO400_regular", "CHR_PFIFO400_final",))
+    p_analyzer5 = mp.Process(target=Analyzer, args=(analyzer_queues[4],30,1000000,True,"CHR_PFIFO800_time", "CHR_PFIFO800_regular", "CHR_PFIFO800_final",))
+    p_analyzer6 = mp.Process(target=Analyzer, args=(analyzer_queues[5],30,1000000,True,"CHR_PFIFO1600_time", "CHR_PFIFO1600_regular", "CHR_PFIFO1600_final",))
+    p_analyzer7 = mp.Process(target=Analyzer, args=(analyzer_queues[6],30,1000000,True,"CHR_PFIFO3000_time", "CHR_PFIFO3000_regular", "CHR_PFIFO3000_final",))
+    p_analyzer8 = mp.Process(target=Analyzer, args=(analyzer_queues[7],30,1000000,True,"CHR_PFIFO5000_time", "CHR_PFIFO5000_regular", "CHR_PFIFO5000_final",))
+    p_analyzer9 = mp.Process(target=Analyzer, args=(analyzer_queues[8],30,1000000,True,"CHR_PFIFO10000_time", "CHR_PFIFO10000_regular", "CHR_PFIFO10000_final",))
+    p_analyzer10 = mp.Process(target=Analyzer, args=(analyzer_queues[9],30,1000000,True,"CHR_PFIFO20000_time", "CHR_PFIFO20000_regular", "CHR_PFIFO20000_final",))
+    p_analyzer11 = mp.Process(target=Analyzer, args=(analyzer_queues[10],30,1000000,True,"CHR_PFIFO50000_time", "CHR_PFIFO50000_regular", "CHR_PFIFO50000_final",))
+    p_analyzer12 = mp.Process(target=Analyzer, args=(analyzer_queues[11],30,1000000,True,"CHR_PFIFO100000_time", "CHR_PFIFO100000_regular", "CHR_PFIFO100000_final",))
+    p_analyzers = [p_analyzer, p_analyzer2, p_analyzer3, p_analyzer4, p_analyzer5, p_analyzer6, p_analyzer7, p_analyzer8, p_analyzer9, p_analyzer10, p_analyzer11, p_analyzer12]
 
     # start the processes
     p_query.start()
-    p_analyzer.start()
+    for analyzer_process in p_analyzers:
+        analyzer_process.start()
 
     # receive the data from the process running the es queries, send them to the process in charge of the cache simulation and send the simulation data to the analyzer
     search_results = query_queue.get() # data are received from the process fetching es data
     while search_results is not None:
-        status_list=[] # list of status (hit, miss or pass) corresponding to the decisions made by the simulator
-        for log in search_results:
-            if isinstance(log["_source"]["maxage"], int): obj = Obj(int(log["_source"]["path"]), int(log["_source"]["contentlength"]), int(log["_source"]["maxage"]))
-            else: obj = Obj(int(log["_source"]["path"]), int(log["_source"]["contentlength"]), default_maxage) # default value if maxage is not indicated (300)
-            status_list.append(cache.recv(int(log["fields"]["@timestamp"][0]), obj)) # keep trace of the status result from the cache simulation
-        analyzer_queue.put([int(search_results[-1]["fields"]["@timestamp"][0]), status_list]) # last timestamp and list of status are sent to the analyzer at the end of the request
+
+        # Run all the cache simulations in parallel (Pool multiprocessing)
+        with Pool() as pool:
+            status_caches = pool.starmap(cache_simulation, zip(repeat(search_results), repeat(default_maxage), caches))
+        
+        # Send results to the analyzers (one individual analyzer for each simulation)
+        for index, status in enumerate(status_caches):
+            analyzer_queues[index].put([int(search_results[-1]["fields"]["@timestamp"][0]), status]) # last timestamp and list of status are sent to the analyzer at the end of the request
+
         search_results = query_queue.get() # data are received from the process fetching es data
 
-    analyzer_queue.put(None) # notify to the analyzer the end of the incoming data
+    for queue in analyzer_queues:
+        queue.put(None) # notify to the analyzer the end of the incoming data
 
 
 if __name__ == '__main__':
     start = time.time()
 
-    processes_coordination(index_name="performance-test", default_maxage=300)
+    processes_coordination(index_name="batch3-*", default_maxage=300)
 
     end = time.time()
 
