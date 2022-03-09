@@ -39,14 +39,14 @@ class Analyzer:
         # Creation of storing files
         # Cache hit ratio by frequency
         if self.__frequency_number != 0:
-            self.__file = open(file_name_frequency_number + ".csv", "w",
+            self.__file = open("./results/" + file_name_frequency_number + ".csv", "w",
                                encoding='UTF8')  # Open txt file for writing the analyzes results
             self.__writer = csv.writer(self.__file)  # Open CSV file
             self.__writer.writerow(['Record', 'Hit', 'Miss', 'Pass', 'CHR'])  # Write CSV header
 
         # Cache hit ratio by time
         if self.__frequency_time != 0:
-            self.__file_time = open(file_name_frequency_time + ".csv", "w",
+            self.__file_time = open("./results/" + file_name_frequency_time + ".csv", "w",
                                     encoding='UTF8')  # Open txt file for writing the analyzes results
             self.__writer_time = csv.writer(self.__file_time)  # Open CSV file
             self.__writer_time.writerow(['Time', 'Total', 'Hit', 'Miss', 'Pass', 'CHR'])  # Write CSV header
@@ -105,7 +105,7 @@ class Analyzer:
             self.save_time_results()
         
         if self.__CHR_final and self.__last_total!=0:
-            with open(self.__file_name_CHR_final + ".txt",'w',encoding = 'utf-8') as f:
+            with open("./results/" + self.__file_name_CHR_final + ".txt",'w',encoding = 'utf-8') as f:
                 print("Number of data processed: ", self.__hit + self.__miss + self.__pass, file=f)
                 print("Cache hit ratio: ", self.cache_hit_ratio()*100, "%", file=f)
 

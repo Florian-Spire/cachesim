@@ -141,31 +141,28 @@ def es_query(q, index_name, search_size=10000, stop_after=-1):
 
     # End of task if the indices does not exist in ES 
     if not es.indices.exists(index=index_name, allow_no_indices=False):
-            q.put(None)
+            q.send(None)
             q.close()
             return
 
+    #ES point-in-time
+    pit = es.open_point_in_time(index=index_name, keep_alive="1m")['id']
+
     # The following query returns for each log in the ES cluster the Epoch time (in second), the path = ID of the object, the content lenght = size of the object and maxage = how long content will be cached
-    search_results = es.search(index=index_name, scroll = '1m', _source=["path", "contentlength", "maxage"], query={"match_all": {}}, size=search_size, docvalue_fields=[{"field": "@timestamp","format": "epoch_second"}], sort=[{"@timestamp": {"order": "asc"}}], version=False)
-    
-    # ES limits the number of results to 10,000. Using the scroll API and scroll ID allows to surpass this limit and to distribute the results in manageable chunks
-    sid = search_results['_scroll_id']
+    search_results = es.search(_source=["path", "contentlength", "maxage"], query={"match_all": {}}, size=search_size, docvalue_fields=[{"field": "@timestamp","format": "epoch_second"}], sort=[{"@timestamp": {"order": "asc"}}], pit={"id":  pit, "keep_alive": "1m"}, version=False)
 
     print("Total number of logs: ", search_results['hits']['total']['value'])
-
-    q.put(search_results["hits"]["hits"])
     total_processed=search_size # Total number of data already processed
 
-    search_results = es.scroll(scroll_id = sid, scroll = '1m')
     while len(search_results['hits']['hits']) > 0 and (stop_after==-1 or stop_after>total_processed):
         # Update the scroll ID
-        sid = search_results['_scroll_id']
-        q.put(search_results["hits"]["hits"])
-        search_results = es.scroll(scroll_id = sid, scroll = '1m')
+        last_value = search_results["hits"]["hits"][-1]["sort"]
+        q.send(search_results["hits"]["hits"])
+        search_results = es.search(_source=["path", "contentlength", "maxage"], search_after=last_value, query={"match_all": {}}, size=search_size, docvalue_fields=[{"field": "@timestamp","format": "epoch_second"}], sort=[{"@timestamp": {"order": "asc"}}], pit={"id":  pit, "keep_alive": "5m"}, version=False)
         total_processed+=search_size
 
-    es.clear_scroll(scroll_id = sid)
-    q.put(None)
+    print("End of query")
+    q.send(None)
     q.close()
 
 def cache_simulation(search_results, maxage, cache):
@@ -228,9 +225,9 @@ def processes_coordination(index_name, default_maxage=0):
 
     search_size=100000 # number of documents returned by each individual search
 
-    # create the queue and process in charge of fetching the data from elasticsearch
-    query_queue = mp.Queue()
-    p_query = mp.Process(target=es_query, args=(query_queue, index_name, search_size,))
+    # create the pipe and process in charge of fetching the data from elasticsearch
+    parent_query, child_query = mp.Pipe()
+    p_query = mp.Process(target=es_query, args=(child_query, index_name, search_size,))
 
     # create the queue and process in charge of analyzing the data resulting from the cache simulation
     analyzer_queues = [mp.Queue() for i in range(12)]
@@ -255,7 +252,7 @@ def processes_coordination(index_name, default_maxage=0):
         analyzer_process.start()
 
     # receive the data from the process running the es queries, send them to the process in charge of the cache simulation and send the simulation data to the analyzer
-    search_results = query_queue.get() # data are received from the process fetching es data
+    search_results = parent_query.recv() # data are received from the process fetching es data
     while search_results is not None:
 
         # Run all the cache simulations in parallel (Pool multiprocessing)
@@ -266,7 +263,7 @@ def processes_coordination(index_name, default_maxage=0):
         for index, status in enumerate(status_caches):
             analyzer_queues[index].put([int(search_results[-1]["fields"]["@timestamp"][0]), status]) # last timestamp and list of status are sent to the analyzer at the end of the request
 
-        search_results = query_queue.get() # data are received from the process fetching es data
+        search_results = parent_query.recv() # data are received from the process fetching es data
 
     for queue in analyzer_queues:
         queue.put(None) # notify to the analyzer the end of the incoming data
@@ -280,6 +277,6 @@ if __name__ == '__main__':
     end = time.time()
 
     # Write on the disk and stdout the final time needed for running the entire program
-    with open("perf.txt",'w',encoding = 'utf-8') as f:
+    with open("./results/" + "perf.txt",'w',encoding = 'utf-8') as f:
         print("Running time: ", end-start, "s", file=f)
     print("Running time: ", end-start, "s")
