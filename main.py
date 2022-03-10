@@ -141,17 +141,26 @@ def es_query(q, index_name, search_size=10000, stop_after=-1):
 
     # End of task if the indices does not exist in ES 
     if not es.indices.exists(index=index_name, allow_no_indices=False):
+            fail_message("Query failed: the index does not exist in Elasticsearch")
             q.send(None)
             q.close()
             return
 
     # The following query returns for each log in the ES cluster the Epoch time (in second), the path = ID of the object, the content lenght = size of the object and maxage = how long content will be cached
-    search_results = es.search(index=index_name, scroll = '1m', _source=["path", "contentlength", "maxage"], query={"match_all": {}}, size=search_size, docvalue_fields=[{"field": "@timestamp","format": "epoch_second"}], sort=[{"@timestamp": {"order": "asc"}}], version=False)
+    search_results = es.search(index=index_name, scroll = '1m', _source=["path", "contentlength", "maxage"], query={"match_all": {}}, size=100000, docvalue_fields=[{"field": "@timestamp","format": "epoch_second"}], sort=[{"@timestamp": {"order": "asc"}}], track_total_hits=True, version=False)
 
     # ES limits the number of results to 10,000. Using the scroll API and scroll ID allows to surpass this limit and to distribute the results in manageable chunks
     sid = search_results['_scroll_id']
 
     print("Total number of logs: ", search_results['hits']['total']['value'])
+    print("Count API: ", es.count(index=index_name)['count'])
+    if(search_results['hits']['total']['value']!=es.count(index=index_name)['count']):
+        fail_message("Query failed: the total number of logs that can be fetched is not consistent (number of results should be " + str(es.count(index=index_name)['count']) + " but the search returned " + str(search_results['hits']['total']['value']) + " documents)")
+        q.send(None)
+        q.close()
+        return 
+        
+
     total_processed=search_size # Total number of data already processed
 
     while len(search_results['hits']['hits']) > 0 and (stop_after==-1 or stop_after>total_processed):
@@ -165,6 +174,13 @@ def es_query(q, index_name, search_size=10000, stop_after=-1):
     print("End of query")
     q.send(None)
     q.close()
+
+def fail_message(message, write_in_file=True):
+    print(message)
+    if write_in_file:
+        with open("./results/" + "fail.txt",'w',encoding = 'utf-8') as f:
+            print(message, file=f)
+
 
 def cache_simulation(search_results, maxage, cache):
     """
@@ -246,14 +262,22 @@ def processes_coordination(index_name, default_maxage=0):
     p_analyzer11 = mp.Process(target=Analyzer, args=(analyzer_queues[10],30,1000000,True,"CHR_PFIFO50000_time", "CHR_PFIFO50000_regular", "CHR_PFIFO50000_final",))
     p_analyzer12 = mp.Process(target=Analyzer, args=(analyzer_queues[11],30,1000000,True,"CHR_PFIFO100000_time", "CHR_PFIFO100000_regular", "CHR_PFIFO100000_final",))
     p_analyzers = [p_analyzer, p_analyzer2, p_analyzer3, p_analyzer4, p_analyzer5, p_analyzer6, p_analyzer7, p_analyzer8, p_analyzer9, p_analyzer10, p_analyzer11, p_analyzer12]
+    
 
     # start the processes
     p_query.start()
+
+    
+    # receive the data from the process running the es queries, send them to the process in charge of the cache simulation and send the simulation data to the analyzer
+    search_results = parent_query.recv() # data are received from the process fetching es data
+    
+    if search_results is None:
+        print("Search failed: end of program")
+        return 
+
     for analyzer_process in p_analyzers:
         analyzer_process.start()
 
-    # receive the data from the process running the es queries, send them to the process in charge of the cache simulation and send the simulation data to the analyzer
-    search_results = parent_query.recv() # data are received from the process fetching es data
     while search_results is not None:
 
         # Run all the cache simulations in parallel (Pool multiprocessing)
