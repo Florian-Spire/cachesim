@@ -147,7 +147,7 @@ def es_query(q, index_name, search_size=10000, stop_after=-1):
             return
 
     # The following query returns for each log in the ES cluster the Epoch time (in second), the path = ID of the object, the content lenght = size of the object and maxage = how long content will be cached
-    search_results = es.search(index=index_name, scroll = '1m', _source=["path", "contentlength", "maxage"], query={"match_all": {}}, size=100000, docvalue_fields=[{"field": "@timestamp","format": "epoch_second"}], sort=[{"@timestamp": {"order": "asc"}}], track_total_hits=True, version=False)
+    search_results = es.search(index=index_name, scroll = '1m', _source=["path", "contentlength", "maxage"], query={"match_all": {}}, size=search_size, docvalue_fields=[{"field": "@timestamp","format": "epoch_second"}], sort=[{"@timestamp": {"order": "asc"}}], track_total_hits=True, version=False)
 
     # ES limits the number of results to 10,000. Using the scroll API and scroll ID allows to surpass this limit and to distribute the results in manageable chunks
     sid = search_results['_scroll_id']
@@ -161,14 +161,14 @@ def es_query(q, index_name, search_size=10000, stop_after=-1):
         return 
         
 
-    total_processed=search_size # Total number of data already processed
+    total_processed=len(search_results['hits']['hits']) # Total number of data already processed
 
     while len(search_results['hits']['hits']) > 0 and (stop_after==-1 or stop_after>total_processed):
         # Update the scroll ID
         sid = search_results['_scroll_id']
         q.send(search_results["hits"]["hits"])
         search_results = es.scroll(scroll_id = sid, scroll = '1m')
-        total_processed+=search_size
+        total_processed+=len(search_results['hits']['hits'])
 
     es.clear_scroll(scroll_id = sid)
     print("End of query")
