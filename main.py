@@ -1,211 +1,97 @@
-import unittest
-from typing import Optional
 import multiprocessing as mp
 from itertools import repeat
 from multiprocessing import Pool
 import time
 
-from elasticsearch import Elasticsearch
-
-from cachesim import Cache, Obj, Status, Analyzer
+from cachesim import FIFOCache, ProtectedFIFOCache, Clairvoyant, Analyzer
+from logs_replayer import *
 
 import warnings
 warnings.filterwarnings('ignore', 'Elasticsearch built-in security.*', ) # Ignore ES security warning
 
 
-class NonCache(Cache):
+
+def processes_coordination_single_simulation(index_name, host, port, default_maxage=0, pagination_technique="Scroll", stop_after=-1, clairvoyant=False):
     """
-    Very basic example of a cache, which actually does not cache at all.
-    """
-
-    def _lookup(self, requested: Obj) -> Optional[Obj]:
-        return None
-
-    def _admit(self, fetched: Obj) -> bool:
-        return True
-
-    def _store(self, fetched: Obj):
-        pass
-
-
-class FIFOCache(Cache):
-    """
-    First in First out cache model.
-    """
-
-    def __init__(self, maxsize: int, logger=None):
-        super().__init__(maxsize, logger)
-
-        # implement a FIFO for the cache itself
-        self._cache = []
-
-    def _lookup(self, requested: Obj) -> Optional[Obj]:
-        # check if object already in cache
-        return next((x for x in self._cache if x == requested), None)
-
-    def _admit(self, fetched: Obj) -> bool:
-        return True
-
-    def _store(self, fetched: Obj):
-        # trigger cache eviction if needed
-        while fetched.size <= self.maxsize < sum(self._cache) + fetched.size:
-            self._cache.pop(0)
-
-        # put the new object at the end of the cache
-        self._cache.append(fetched)
-
-
-class ProtectedFIFOCache(FIFOCache):
-    """
-    Same as FIFOCache, but big (> 10% of total cache size) object are not allowed to enter the cache.
-    """
-
-    def _admit(self, fetched: Obj) -> bool:
-        # allow only small objects to enter the cache
-        return fetched.size <= self.maxsize * 0.1
-
-
-class TestCaches(unittest.TestCase):
-    def setUp(self):
-        # define objects
-        self.x = Obj('x', 1000, 300)
-        self.a = Obj('a', 100, 300)
-        self.b = Obj('b', 100, 300)
-        self.c = Obj('c', 100, 300)
-        self.d = Obj('d', 30, 300)
-
-    def test_noncache(self):
-        # create cache
-        cache = NonCache(200)
-
-        # place requests
-        self.assertEqual(cache.recv(0, self.x), Status.PASS)  # way too big, must be PASS
-        self.assertEqual(cache.recv(1, self.a), Status.MISS)  # NonCache does not cache
-        self.assertEqual(cache.recv(2, self.b), Status.MISS)  # NonCache does not cache
-        self.assertEqual(cache.recv(3, self.c), Status.MISS)  # NonCache does not cache
-
-    def test_fifocache(self):
-        # create cache
-        cache = FIFOCache(400)
-
-        # place requests
-        self.assertEqual(cache.recv(0, self.x), Status.PASS)  # way too big, must be PASS
-        self.assertEqual(cache.recv(1, self.a), Status.MISS)  # MISS
-        self.assertEqual(cache.recv(2, self.b), Status.MISS)  # MISS
-        self.assertEqual(cache.recv(3, self.a), Status.HIT)  # 2nd request on a, must be HIT
-        self.assertEqual(cache.recv(4, self.c), Status.MISS)  # MISS
-
-    def test_protectedfifocache(self):
-        # create cache
-        cache = ProtectedFIFOCache(400)
-
-        # place requests
-        self.assertEqual(cache.recv(0, self.a), Status.PASS)  # size limit at cache admission
-        self.assertEqual(cache.recv(1, self.b), Status.PASS)  # size limit at cache admission
-        self.assertEqual(cache.recv(2, self.a), Status.PASS)  # size limit at cache admission
-        self.assertEqual(cache.recv(3, self.d), Status.MISS)  # MISS
-        self.assertEqual(cache.recv(3.1, self.d), Status.HIT)  # 2nd request on a, must be HIT
-        self.assertEqual(cache.recv(3.2, self.d), Status.HIT)  # 3rd request on a, must be HIT
-        self.assertEqual(cache.recv(1000, self.d), Status.MISS)  # expired, must be MISS
-
-
-def connect_elasticsearch(domain, port):
-    """
-    Python Elasticsearch Client: connection to elasticsearch
-
-    :param domain: Elasticsearch domain of the running instance
-    :param port: Elasticsearch HTTP interface port 
-    """
-    host = "http://" + domain + ":" + str(port)
-    print(host)
-    es = Elasticsearch([host], request_timeout = 30, max_retries=10, retry_on_timeout=True)
-    if es.ping():
-        print('Elasticsearch is connected!')
-    else:
-        print('Error: Elasticsearch could not connect!')
-    return es
-
-def es_query(q, index_name, search_size=10000, stop_after=-1):
-    """
-    Fetch the logs data from Elasticsearch using search queries and scroll API. The logs are then sent to the main
-    process to be replayed.
-
-    :param q: multiprocessing queue used to send the logs' data to the main process
-    :param index_name: name of the ES index used for running the search
-    :param search_size: number of documents returned by each individual search (by default limited to 10,000 in ES)
-    :param stop_after: the search stop after this number of data processed, -1 for not setting any limit
-    """
-
-    # Requests from ES cluster
-    es = connect_elasticsearch("192.168.100.146", 9200)
-
-    # End of task if the indices does not exist in ES 
-    if not es.indices.exists(index=index_name, allow_no_indices=False):
-            fail_message("Query failed: the index does not exist in Elasticsearch")
-            q.send(None)
-            q.close()
-            return
-
-    # The following query returns for each log in the ES cluster the Epoch time (in second), the path = ID of the object, the content lenght = size of the object and maxage = how long content will be cached
-    search_results = es.search(index=index_name, scroll = '1m', _source=["path", "contentlength", "maxage"], query={"match_all": {}}, size=search_size, docvalue_fields=[{"field": "@timestamp","format": "epoch_second"}], sort=[{"@timestamp": {"order": "asc"}}], track_total_hits=True, version=False)
-
-    # ES limits the number of results to 10,000. Using the scroll API and scroll ID allows to surpass this limit and to distribute the results in manageable chunks
-    sid = search_results['_scroll_id']
-
-    print("Total number of logs: ", search_results['hits']['total']['value'])
-    print("Count API: ", es.count(index=index_name)['count'])
-    if(search_results['hits']['total']['value']!=es.count(index=index_name)['count']):
-        fail_message("Query failed: the total number of logs that can be fetched is not consistent (number of results should be " + str(es.count(index=index_name)['count']) + " but the search returned " + str(search_results['hits']['total']['value']) + " documents)")
-        q.send(None)
-        q.close()
-        return 
-        
-
-    total_processed=len(search_results['hits']['hits']) # Total number of data already processed
-
-    while len(search_results['hits']['hits']) > 0 and (stop_after==-1 or stop_after>total_processed):
-        # Update the scroll ID
-        sid = search_results['_scroll_id']
-        q.send(search_results["hits"]["hits"])
-        search_results = es.scroll(scroll_id = sid, scroll = '1m')
-        total_processed+=len(search_results['hits']['hits'])
-
-    es.clear_scroll(scroll_id = sid)
-    print("End of query")
-    q.send(None)
-    q.close()
-
-def fail_message(message, write_in_file=True):
-    print(message)
-    if write_in_file:
-        with open("./results/" + "fail.txt",'w',encoding = 'utf-8') as f:
-            print(message, file=f)
-
-
-def cache_simulation(search_results, maxage, cache):
-    """
-    Search results data are sent to the simulation.
-
-    :param search_results: multiprocessing queue used to send the logs' data to the main process
-    :param maxage: default maxage used if not indicated in HTTP cache header
-    :param cache: cache used for the simulation
-    """
-    status_list=[] # list of status (hit, miss or pass) corresponding to the decisions made by the simulator
-    for log in search_results:
-        if isinstance(log["_source"]["maxage"], int): obj = Obj(int(log["_source"]["path"]), int(log["_source"]["contentlength"]), int(log["_source"]["maxage"]))
-        else: obj = Obj(int(log["_source"]["path"]), int(log["_source"]["contentlength"]), maxage) # default value if maxage is not indicated
-        status_list.append(cache.recv(int(log["fields"]["@timestamp"][0]), obj)) # keep trace of the status result from the cache simulation
-    return status_list
-
-
-def processes_coordination(index_name, default_maxage=0):
-    """
-    Manage and coordinate every processes used for running for this program (elasticsearch fetching process, cache simulation process, analyzer process).
+    Manage and coordinate the processes. Only one simulation can be done at the same time (see processes_coordination_parallel for running parallel simulations).
     This function is in charge of creating the processes, establishing the communication of the data between the processes and terminating them.
 
     :param index_name: name of the ES index used for running the search
+    :param host: IP address of ES instance
+    :param port: port of ES instance
     :param default_maxage: default maxage value if not indicated in HTTP cache header
+    :pagination_technique: pagination technique used for paginating the results: 'Scroll' or 'Search_after'
+    :stop_after: -1 means that we iterate over the whole index, other values stop the program after the number indicated (for example 100 to run the program only on the 100 first values from the index)
+    :param: true if clairvoyant cache is used, false otherwise (warning: clairvoyant cannot be mixed with other type of caches as it requires knowledge of the future)
+    """
 
+    # create cache
+    cache = Clairvoyant(800, connect_elasticsearch(host, port))
+
+    
+    # define objects
+    # x = Obj('x', 1000, 300)
+    # a = Obj('a', 100, 300)
+    # b = Obj('b', 100, 300)
+    # c = Obj('c', 100, 300)
+    # d = Obj('d', 30, 300)
+
+    # place requests
+    # cache.recv(0, a)
+    # cache.recv(1, b)
+    # cache.recv(2, a)
+    # cache.recv(3, d)
+    # cache.recv(3.1, d)
+    # cache.recv(3.2, d)
+    # cache.recv(1000, d)
+
+    search_size=1000 # number of documents returned by each individual search
+
+     # create the pipe and process in charge of fetching the data from elasticsearch
+    parent_query, child_query = mp.Pipe()
+    if pagination_technique.lower()=="scroll":
+        p_query = mp.Process(target=es_query_scroll, args=(child_query, index_name, host, port, search_size,stop_after))
+    elif pagination_technique.lower() in ["search-after", "search_after", "searchafter"]:
+        p_query = mp.Process(target=es_query_search_after, args=(child_query, index_name, host, port, search_size,stop_after,))
+    else:
+        fail_message("Pagination technique is invalid (should be scroll or search_after): please change parameter in main function")
+        return 
+
+    # create the queue and process in charge of analyzing the data resulting from the cache simulation
+    analyzer_queue = mp.Queue()
+    p_analyzer = mp.Process(target=Analyzer, args=(analyzer_queue,1,1000,True,"CHR_Clairvoyant_time", "CHR_Clairvoyant_regular", "CHR_Clairvoyant_final",))
+
+    # start the processes
+    p_query.start()
+    p_analyzer.start()
+
+    # receive the data from the process running the es queries, send them to the process in charge of the cache simulation and send the simulation data to the analyzer
+    search_results = parent_query.recv() # data are received from the process fetching es data
+    while search_results is not None:
+        status_list=[] # list of status (hit, miss or pass) corresponding to the decisions made by the simulator
+        for log in search_results:
+            if isinstance(log["_source"]["maxage"], int): obj = Obj(int(log["_source"]["path"]), int(log["_source"]["contentlength"]), int(log["_source"]["maxage"]))
+            else: obj = Obj(int(log["_source"]["path"]), int(log["_source"]["contentlength"]), default_maxage) # default value if maxage is not indicated (300)
+            if clairvoyant: status_list.append(cache.recv(int(log["fields"]["@timestamp"][0]), log["_id"], obj))
+            else: status_list.append(cache.recv(int(log["fields"]["@timestamp"][0]), obj))
+        analyzer_queue.put([int(search_results[-1]["fields"]["@timestamp"][0]), status_list]) # last timestamp and list of status are sent to the analyzer at the end of the request
+        search_results = parent_query.recv() # data are received from the process fetching es data
+
+    analyzer_queue.put(None) # notify to the analyzer the end of the incoming data
+
+
+
+def processes_coordination_parallel(index_name, host, port, default_maxage=0, pagination_technique="Scroll", stop_after=-1):
+    """
+    Manage and coordinate every processes used for running for this program (elasticsearch fetching process, cache simulation processes, analyzer processes).
+    This function is in charge of creating the processes, establishing the communication of the data between the processes and terminating them.
+
+    :param index_name: name of the ES index used for running the search
+    :param host: IP address of ES instance
+    :param port: port of ES instance
+    :param default_maxage: default maxage value if not indicated in HTTP cache header
+    :pagination_technique: pagination technique used for paginating the results: 'Scroll' or 'Search_after'
+    :stop_after: -1 means that we iterate over the whole index, other values stop the program after the number indicated (for example 100 to run the program only on the 100 first values from the index)
     """
 
     # create cache
@@ -244,7 +130,13 @@ def processes_coordination(index_name, default_maxage=0):
 
     # create the pipe and process in charge of fetching the data from elasticsearch
     parent_query, child_query = mp.Pipe()
-    p_query = mp.Process(target=es_query, args=(child_query, index_name, search_size,))
+    if pagination_technique.lower()=="scroll":
+        p_query = mp.Process(target=es_query_scroll, args=(child_query, index_name, host, port, search_size,stop_after))
+    elif pagination_technique.lower() in ["search-after", "search_after", "searchafter"]:
+        p_query = mp.Process(target=es_query_search_after, args=(child_query, index_name, host, port, search_size,stop_after,))
+    else:
+        fail_message("Pagination technique is invalid (should be scroll or search_after): please change parameter in main function")
+        return 
 
     # create the queue and process in charge of analyzing the data resulting from the cache simulation
     analyzer_queues = [mp.Queue() for i in range(12)]
@@ -272,7 +164,7 @@ def processes_coordination(index_name, default_maxage=0):
     search_results = parent_query.recv() # data are received from the process fetching es data
     
     if search_results is None:
-        print("Search failed: end of program")
+        fail_message("Search failed (no search result returned): end of program")
         return 
 
     for analyzer_process in p_analyzers:
@@ -294,10 +186,13 @@ def processes_coordination(index_name, default_maxage=0):
         queue.put(None) # notify to the analyzer the end of the incoming data
 
 
+
 if __name__ == '__main__':
     start = time.time()
 
-    processes_coordination(index_name="batch3-*", default_maxage=300)
+    # Check parameter doc from process_coordination function for more details
+    processes_coordination_parallel(index_name="batch3-*", host="192.168.100.146", port=9200, default_maxage=300, pagination_technique="Scroll", stop_after=-1)
+    # processes_coordination_single_simulation(index_name="batch3-*", host="192.168.100.146", port=9200, default_maxage=300, pagination_technique="Scroll", stop_after=-1, clairvoyant=True)
 
     end = time.time()
 
