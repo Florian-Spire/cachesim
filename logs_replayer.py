@@ -48,7 +48,7 @@ def es_query_scroll(q, index_name, host, port, search_size=10000, stop_after=-1)
             return
 
     # The following query returns for each log in the ES cluster the Epoch time (in second), the path = ID of the object, the content lenght = size of the object and maxage = how long content will be cached
-    search_results = es.search(index=index_name, scroll = '1m', _source=["path", "contentlength", "maxage"], query={"match_all": {}}, size=search_size, docvalue_fields=[{"field": "@timestamp","format": "epoch_second"}], sort=[{"@timestamp": {"order": "asc"}}], track_total_hits=True, version=False)
+    search_results = es.search(index=index_name, scroll = '2m', _source=["path", "contentlength", "maxage"], query={"match_all": {}}, size=search_size, docvalue_fields=[{"field": "@timestamp","format": "epoch_second"}], sort=[{"@timestamp": {"order": "asc"}}], track_total_hits=True, version=False)
 
     # ES limits the number of results to 10,000. Using the scroll API and scroll ID allows to surpass this limit and to distribute the results in manageable chunks
     sid = search_results['_scroll_id']
@@ -67,7 +67,7 @@ def es_query_scroll(q, index_name, host, port, search_size=10000, stop_after=-1)
         sid = search_results['_scroll_id']
         q.send(search_results["hits"]["hits"])
         total_processed+=len(search_results['hits']['hits'])
-        search_results = es.scroll(scroll_id = sid, scroll = '1m')
+        search_results = es.scroll(scroll_id = sid, scroll = '2m')
 
     es.clear_scroll(scroll_id = sid)
     print("End of query")
@@ -97,10 +97,10 @@ def es_query_search_after(q, index_name, host, port, search_size=10000, stop_aft
             return
 
     #ES point-in-time
-    pit = es.open_point_in_time(index=index_name, keep_alive="1m")['id']
+    pit = es.open_point_in_time(index=index_name, keep_alive="2m")['id']
 
     # The following query returns for each log in the ES cluster the Epoch time (in second), the path = ID of the object, the content lenght = size of the object and maxage = how long content will be cached
-    search_results = es.search(_source=["path", "contentlength", "maxage"], query={"match_all": {}}, size=search_size, docvalue_fields=[{"field": "@timestamp","format": "epoch_second"}], sort=[{"@timestamp": {"order": "asc"}}], pit={"id":  pit, "keep_alive": "1m"}, track_total_hits=True, version=False)
+    search_results = es.search(_source=["path", "contentlength", "maxage"], query={"match_all": {}}, size=search_size, docvalue_fields=[{"field": "@timestamp","format": "epoch_second"}], sort=[{"@timestamp": {"order": "asc"}}], pit={"id":  pit, "keep_alive": "2m"}, track_total_hits=True, version=False)
 
     print("Total number of logs: ", search_results['hits']['total']['value'])
     print("Count API: ", es.count(index=index_name)['count'])

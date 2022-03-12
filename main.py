@@ -26,7 +26,8 @@ def processes_coordination_single_simulation(index_name, host, port, default_max
     """
 
     # create cache
-    cache = Clairvoyant(800, connect_elasticsearch(host, port))
+    cache = Clairvoyant(100000, connect_elasticsearch(host, port), index_name)
+    # cache = ProtectedFIFOCache(100000)
 
     
     # define objects
@@ -59,11 +60,12 @@ def processes_coordination_single_simulation(index_name, host, port, default_max
 
     # create the queue and process in charge of analyzing the data resulting from the cache simulation
     analyzer_queue = mp.Queue()
-    p_analyzer = mp.Process(target=Analyzer, args=(analyzer_queue,1,1000,True,"CHR_Clairvoyant_time", "CHR_Clairvoyant_regular", "CHR_Clairvoyant_final",))
+    p_analyzer_clairvoyant = mp.Process(target=Analyzer, args=(analyzer_queue,1,1000,True,"CHR_Clairvoyant_100000_time", "CHR_Clairvoyant_100000_regular", "CHR_Clairvoyant_100000_final",))
+    # p_analyzer = mp.Process(target=Analyzer, args=(analyzer_queue,1,1000,True,"CHR_protected_FIFO_100000_time", "CHR_protected_FIFO100000_regular", "CHR_protected_FIFO_100000_final",))
 
     # start the processes
     p_query.start()
-    p_analyzer.start()
+    p_analyzer_clairvoyant.start()
 
     # receive the data from the process running the es queries, send them to the process in charge of the cache simulation and send the simulation data to the analyzer
     search_results = parent_query.recv() # data are received from the process fetching es data

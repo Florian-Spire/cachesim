@@ -182,15 +182,20 @@ class ProtectedFIFOCache(FIFOCache):
 class Clairvoyant(Cache):
     """
     Clairvoyant (Belady) cache model. This model uses knowledge of the future and is the optimal caching method (unsusable in practice).
+    The algorithm uses the knowledge of the future to find the optimal cache replacement policy. The objects with the furthest next access times are evicted.
+    The cache is implemented as a Python dictionary linking the next access times (keys) and the objects in the cache (values).
+    When an object enters the cache the next access time is searched in Elasticsearch and stored in the Python dict.
+    If the cache is full the object with the furthest next access time is evicted.
     """
 
-    def __init__(self, maxsize: int, es_instance: Elasticsearch, logger=None, write_log=True):
+    def __init__(self, maxsize: int, es_instance: Elasticsearch, index_name, logger=None, write_log=True):
         """ Init function
-        :param es_instance: instance used for running the ES searches"""
+        :param es_instance: instance used for running the ES searches
+        :param index_name: name of the index to perform the search for finding next access time of the object"""
         super().__init__(maxsize, None, write_log)
 
-        # list of the elements contained in the cache
-        self._cache = []
+        # dico with key = next access time (int, epoch in second), value = object in the cache
+        self._cache = {}
 
         # ES IDs of the documents already processed
         self._es_ids = []
@@ -199,6 +204,11 @@ class Clairvoyant(Cache):
 
         self.__write_log = write_log
 
+        self.__index_name = index_name
+
+        # keep track of the time
+        self.__clock = 0
+
         # setup logging
         if logger is None:
             self.__logger = logging.getLogger(name=self.__class__.__name__)
@@ -206,39 +216,53 @@ class Clairvoyant(Cache):
         else:
             self.__logger = logger
 
+    @property
+    def clock(self) -> float:
+        """Current time."""
+        return self.__clock
+
+    @clock.setter
+    def clock(self, time: float):
+        """Update current time."""
+        assert self.__clock is None or time >= self.__clock, f"Time passes, you will never become younger!"
+        self.__clock = time
+
     def _lookup(self, requested: Obj) -> Optional[Obj]:
         # check if object already in cache
-        return next((x for x in self._cache if x == requested), None)
+        return next((x for x in [obj for sublist in self._cache.values() for obj in sublist] if x == requested), None)
 
     def _admit(self, fetched: Obj) -> bool:
         return fetched.size <= self.maxsize * 0.1
 
     def _store(self, fetched: Obj):
-        self._cache.append(fetched)
+        """ Store object according to clairvoyant (Belady) algorithm.
+        1. If some objects contained in the cache have an expired next access time we update it to the real next access time (depending to the clock state)
+        2. We search the next access time for the object entering in the cache and we store the object and the next access time in the Python dictionary
+        3. If cache is full we drop the objects with the furthest next access times until the cache is not full anymore
+        """
+        # 1. When time is already passed update the next access time
+        while self._cache and min(self._cache.keys())<self.clock:
+            min_key = min(self._cache.keys()) # time already passed
+            for obj in self._cache[min_key]: # update the access time for all objects for which the time is passed
+                query = {"bool": {"filter": [{"term": {"path": obj.index}}], "must": [{"range": {"@timestamp":{"gte":self.clock, "format": "epoch_second"}}}], "must_not": [{"terms": {"_id": self._es_ids}}]}}
+                search_results = self._es.search(index=self.__index_name, query=query, size=1, docvalue_fields=[{"field": "@timestamp","format": "epoch_second"}], sort=[{"@timestamp": {"order": "asc"}}], version=False)
+                if len(search_results["hits"]["hits"])>0: self._cache.setdefault(int(search_results["hits"]["hits"][0]["fields"]["@timestamp"][0]), []).append(obj) # if the object is never called again in the future
+                self._cache[min_key].remove(obj)
+                if len(self._cache[min_key]) == 0: del self._cache[min_key] # when we processed every object destroy the dict element
 
-        # trigger cache eviction if needed
-        while fetched.size <= self.maxsize < sum(self._cache) + fetched.size:
-            # We search the object with the furthest access time
-            max_timestamp = 0 # furthest access time discovered
-            obj_to_drop=self._cache[0] # next object to drop (initialization)
-            for cache_element in self._cache:
-                # For cache_element we search the next time access (search the next timestamp for the object with the objects already processed (ES doc IDs) excluded)
-                query = {"bool": {"filter": [{"term": {"path": cache_element.index}}], "must_not": [{"terms": {"_id": self._es_ids}}]}} 
-                search_results = self._es.search(index="performance-test", query=query, size=1, docvalue_fields=[{"field": "@timestamp","format": "epoch_second"}], sort=[{"@timestamp": {"order": "asc"}}], version=False)
-                if len(search_results["hits"]["hits"])==0:
-                    obj_to_drop=cache_element
-                    break
-                timestamp = int(search_results["hits"]["hits"][0]["fields"]["@timestamp"][0])
-                if timestamp>max_timestamp:
-                    max_timestamp=timestamp # new furthest access time
-                    obj_to_drop=cache_element # new object to drop
+        # 2. Search the next time access for the new object (search the next timestamp for the object and exclude the objects already processed (ES doc IDs))
+        query = {"bool": {"filter": [{"term": {"path": fetched.index}}], "must": [{"range": {"@timestamp":{"gte":self.clock, "format": "epoch_second"}}}], "must_not": [{"terms": {"_id": self._es_ids}}]}} 
+        search_results = self._es.search(index=self.__index_name, query=query, size=1, docvalue_fields=[{"field": "@timestamp","format": "epoch_second"}], sort=[{"@timestamp": {"order": "asc"}}], version=False)
+        if len(search_results["hits"]["hits"])==0: return # don't store the object if never called after
+        self._cache.setdefault(int(search_results["hits"]["hits"][0]["fields"]["@timestamp"][0]), []).append(fetched)
 
-                elif timestamp==max_timestamp and cache_element.size>obj_to_drop.size: # drop the biggest object if furthest access time is the same
-                    obj_to_drop=cache_element
+        # 3. Trigger cache eviction if needed
+        while fetched.size <= self.maxsize < sum([obj for sublist in self._cache.values() for obj in sublist]) + fetched.size:
+            max_key = max(self._cache.keys()) # Furthest access time
+            self._cache[max_key].pop(0) # Evict one element with furthest next access time
+            if len(self._cache[max_key]) == 0: del self._cache[max_key]
 
-            self._cache.remove(obj_to_drop)
-
-    def recv(self, time: float, es_id, obj: Obj, ) -> Status:
+    def recv(self, time: float, es_id, obj: Obj) -> Status:
         """
         Call this function to place a request to the cache.
 
@@ -247,7 +271,7 @@ class Clairvoyant(Cache):
         :param es_id: id of the document referenced in ES
         :return: Request status (Status).
         """
-
+        if self.clock < time: self._es_ids.clear() # if clock moves forward we can clear the IDs list because the ES queries only search the documents after the time of the clock
         # update the internal clock
         self.clock = time
 
