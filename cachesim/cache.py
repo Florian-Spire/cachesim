@@ -174,12 +174,13 @@ class FIFOCache(Cache):
         return True
 
     def _store(self, fetched: Obj):
-        # trigger cache eviction if needed
-        while fetched.size <= self.maxsize < sum(self._cache) + fetched.size:
-            self._cache.pop(0)
-
         # put the new object at the end of the cache
         self._cache.append(fetched)
+
+        # trigger cache eviction if needed
+        while fetched.size <= self.maxsize < sum(self._cache):
+            self._cache.pop(0)
+
 
     def _delete_expired(self, time: int):
         self._cache = [obj for obj in self._cache if not obj.isexpired(time)]
@@ -196,7 +197,7 @@ class ProtectedFIFOCache(FIFOCache):
 
 class LRUCache(Cache):
     """
-    First in First out cache model.
+    Least recently used cache model.
     """
 
     def __init__(self, maxsize: int, logger=None, write_log=False):
@@ -214,18 +215,20 @@ class LRUCache(Cache):
             requested.enter = self.clock
             requested.fetched = True
             self._cache.append(requested)
+        else: return None
         return requested
 
     def _admit(self, fetched: Obj) -> bool:
         return True
 
     def _store(self, fetched: Obj):
-        # trigger cache eviction if needed
-        while fetched.size <= self.maxsize < sum(self._cache) + fetched.size:
-            self._cache.pop(0)
-
         # put the new object at the end of the cache
         self._cache.append(fetched)
+
+        # trigger cache eviction if needed
+        while fetched.size <= self.maxsize < sum(self._cache):
+            self._cache.pop(0)
+
 
     def _delete_expired(self, time: int):
         self._cache = [obj for obj in self._cache if not obj.isexpired(time)]
@@ -233,6 +236,60 @@ class LRUCache(Cache):
 class ProtectedLRUCache(LRUCache):
     """
     Same as LRU cache, but big (> 10% of total cache size) object are not allowed to enter the cache.
+    """
+    def _admit(self, fetched: Obj) -> bool:
+        # allow only small objects to enter the cache
+        return fetched.size <= self.maxsize * 0.1
+
+class LFUCache(Cache):
+    """
+    Least frequently used cache model.
+    """
+
+    def __init__(self, maxsize: int, logger=None, write_log=False):
+        super().__init__(maxsize, logger, write_log)
+
+        # implement a FIFO for the cache itself
+        self._cache = []
+
+        self._frequency = {}
+
+    def _lookup(self, requested: Obj) -> Optional[Obj]:
+        # Update frequency
+        self._frequency[requested.index] = self._frequency.get(requested.index, 0) + 1
+        # check if object already in cache
+        cached_obj = next((x for x in self._cache if x == requested), None)
+        # If in cache replace the element at the end of the list (LRU is used in case of tie)
+        if cached_obj is not None:
+            self._cache.remove(cached_obj)
+            requested.enter = self.clock
+            requested.fetched = True
+            self._cache.append(requested)
+        else: return None
+        return requested
+
+    def _admit(self, fetched: Obj) -> bool:
+        return True
+
+    def _store(self, fetched: Obj):
+        self._cache.append(fetched)
+        # trigger cache eviction if needed
+        while fetched.size <= self.maxsize < sum(self._cache):
+            max_frequency=self._cache[0].index
+            drop = 0 # index of the object to drop from the cache
+            for index_cache in range(1, len(self._cache)):
+                if self._frequency[self._cache[index_cache].index]<max_frequency:
+                    max_frequency = self._frequency[self._cache[index_cache].index]
+                    drop = index_cache
+            self._cache.pop(drop)
+        
+
+    def _delete_expired(self, time: int):
+        self._cache = [obj for obj in self._cache if not obj.isexpired(time)]
+
+class ProtectedLFUCache(LFUCache):
+    """
+    Same as LFU cache, but big (> 10% of total cache size) object are not allowed to enter the cache.
     """
     def _admit(self, fetched: Obj) -> bool:
         # allow only small objects to enter the cache
@@ -302,7 +359,7 @@ class Clairvoyant(Cache):
         self._cache.setdefault(int(search_results["hits"]["hits"][0]["fields"]["@timestamp"][0]), []).append(fetched)
 
         # 3. Trigger cache eviction if needed
-        while fetched.size <= self.maxsize < sum([obj for sublist in self._cache.values() for obj in sublist]) + fetched.size:
+        while fetched.size <= self.maxsize < sum([obj for sublist in self._cache.values() for obj in sublist]):
             max_key = max(self._cache.keys()) # Furthest access time
             self._cache[max_key].pop(0) # Evict one element with furthest next access time
             if len(self._cache[max_key]) == 0: del self._cache[max_key]

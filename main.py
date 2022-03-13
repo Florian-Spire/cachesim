@@ -96,7 +96,7 @@ def processes_coordination_parallel(index_name, host, port, default_maxage=0, pa
     :param stop_after: -1 means that we iterate over the whole index, other values stop the program after the number indicated (for example 100 to run the program only on the 100 first values from the index)
     """
 
-    caches = load.protected_LRU_caches()
+    caches = load.protected_LFU_caches()
 
     
     # define objects
@@ -127,7 +127,7 @@ def processes_coordination_parallel(index_name, host, port, default_maxage=0, pa
         fail_message("Pagination technique is invalid (should be scroll or search_after): please change parameter in main function")
         return 
 
-    analyzer_queues, p_analyzers = load.analyzers("PLRU")
+    analyzer_queues, p_analyzers = load.analyzers("PLFU")
     
 
     # start the processes

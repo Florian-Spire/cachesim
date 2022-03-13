@@ -1,5 +1,5 @@
 import multiprocessing as mp
-from cachesim import FIFOCache, ProtectedFIFOCache, LRUCache, ProtectedLRUCache, Clairvoyant, Analyzer
+from cachesim import FIFOCache, ProtectedFIFOCache, LRUCache, ProtectedLRUCache, Clairvoyant, LFUCache, ProtectedLFUCache, Analyzer
 
 def protected_FIFO_caches():
     # create cache
@@ -33,11 +33,27 @@ def protected_LRU_caches():
     cache12 = ProtectedLRUCache(1000000)
     return [cache, cache2, cache3, cache4, cache5, cache6, cache7, cache8, cache9, cache10, cache11, cache12]
 
+def protected_LFU_caches():
+    # create cache
+    cache = ProtectedLFUCache(50)
+    cache2 = ProtectedLFUCache(100)
+    cache3 = ProtectedLFUCache(200)
+    cache4 = ProtectedLFUCache(500)
+    cache5 = ProtectedLFUCache(1000)
+    cache6 = ProtectedLFUCache(2000)
+    cache7 = ProtectedLFUCache(5000)
+    cache8 = ProtectedLFUCache(10000)
+    cache9 = ProtectedLFUCache(20000)
+    cache10 = ProtectedLFUCache(50000)
+    cache11 = ProtectedLFUCache(100000)
+    cache12 = ProtectedLFUCache(1000000)
+    return [cache, cache2, cache3, cache4, cache5, cache6, cache7, cache8, cache9, cache10, cache11, cache12]
+
 def analyzers(cache_name):
     # create the queue and process in charge of analyzing the data resulting from the cache simulation
     analyzer_queues = [mp.Queue() for i in range(12)]
 
-    p_analyzer = mp.Process(target=Analyzer, args=(analyzer_queues[0],30,1000000,True,"CHR_PLRU_"+cache_name+"_time", "CHR_"+cache_name+"_50_regular", "CHR_"+cache_name+"_50_final",))
+    p_analyzer  = mp.Process(target=Analyzer, args=(analyzer_queues[0],30,1000000,True,"CHR_"+cache_name+"_50_time", "CHR_"+cache_name+"_50_regular", "CHR_"+cache_name+"_50_final",))
     p_analyzer2 = mp.Process(target=Analyzer, args=(analyzer_queues[1],30,1000000,True,"CHR_"+cache_name+"_100_time", "CHR_"+cache_name+"_100_regular", "CHR_"+cache_name+"_100_final",))
     p_analyzer3 = mp.Process(target=Analyzer, args=(analyzer_queues[2],30,1000000,True,"CHR_"+cache_name+"_200_time", "CHR_"+cache_name+"_200_regular", "CHR_"+cache_name+"_200_final",))
     p_analyzer4 = mp.Process(target=Analyzer, args=(analyzer_queues[3],30,1000000,True,"CHR_"+cache_name+"_500_time", "CHR_"+cache_name+"_500_regular", "CHR_"+cache_name+"_500_final",))
@@ -47,6 +63,6 @@ def analyzers(cache_name):
     p_analyzer8 = mp.Process(target=Analyzer, args=(analyzer_queues[7],30,1000000,True,"CHR_"+cache_name+"_10000_time", "CHR_"+cache_name+"_10000_regular", "CHR_"+cache_name+"_10000_final",))
     p_analyzer9 = mp.Process(target=Analyzer, args=(analyzer_queues[8],30,1000000,True,"CHR_"+cache_name+"_20000_time", "CHR_"+cache_name+"_20000_regular", "CHR_"+cache_name+"_20000_final",))
     p_analyzer10 = mp.Process(target=Analyzer, args=(analyzer_queues[9],30,1000000,True,"CHR_"+cache_name+"_50000_time", "CHR_"+cache_name+"_50000_regular", "CHR_"+cache_name+"_50000_final",))
-    p_analyzer11 = mp.Process(target=Analyzer, args=(analyzer_queues[10],30,1000000,True,"CHR_"+cache_name+"_100-000_time", "CHR_"+cache_name+"_100-000_regular", "CHR_"+cache_name+"_100-000_final",))
-    p_analyzer12 = mp.Process(target=Analyzer, args=(analyzer_queues[11],30,1000000,True,"CHR_"+cache_name+"_1-000-000_time", "CHR_"+cache_name+"_1-000-000_regular", "CHR_"+cache_name+"_1-000-000_final",))
+    p_analyzer11 = mp.Process(target=Analyzer, args=(analyzer_queues[10],30,1000000,True,"CHR_"+cache_name+"_100000_time", "CHR_"+cache_name+"_100000_regular", "CHR_"+cache_name+"_100000_final",))
+    p_analyzer12 = mp.Process(target=Analyzer, args=(analyzer_queues[11],30,1000000,True,"CHR_"+cache_name+"_1000000_time", "CHR_"+cache_name+"_1000000_regular", "CHR_"+cache_name+"_1000000_final",))
     return analyzer_queues, [p_analyzer, p_analyzer2, p_analyzer3, p_analyzer4, p_analyzer5, p_analyzer6, p_analyzer7, p_analyzer8, p_analyzer9, p_analyzer10, p_analyzer11, p_analyzer12]
