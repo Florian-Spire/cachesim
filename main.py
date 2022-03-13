@@ -4,6 +4,7 @@ from multiprocessing import Pool
 import time
 
 from cachesim import FIFOCache, ProtectedFIFOCache, Clairvoyant, Analyzer
+from cachesim import load
 from logs_replayer import *
 
 import warnings
@@ -95,20 +96,7 @@ def processes_coordination_parallel(index_name, host, port, default_maxage=0, pa
     :param stop_after: -1 means that we iterate over the whole index, other values stop the program after the number indicated (for example 100 to run the program only on the 100 first values from the index)
     """
 
-    # create cache
-    cache = ProtectedFIFOCache(50)
-    cache2 = ProtectedFIFOCache(100)
-    cache3 = ProtectedFIFOCache(200)
-    cache4 = ProtectedFIFOCache(400)
-    cache5 = ProtectedFIFOCache(800)
-    cache6 = ProtectedFIFOCache(1600)
-    cache7 = ProtectedFIFOCache(3000)
-    cache8 = ProtectedFIFOCache(5000)
-    cache9 = ProtectedFIFOCache(10000)
-    cache10 = ProtectedFIFOCache(20000)
-    cache11 = ProtectedFIFOCache(50000)
-    cache12 = ProtectedFIFOCache(100000)
-    caches = [cache, cache2, cache3, cache4, cache5, cache6, cache7, cache8, cache9, cache10, cache11, cache12]
+    caches = load.protected_LRU_caches()
 
     
     # define objects
@@ -139,22 +127,7 @@ def processes_coordination_parallel(index_name, host, port, default_maxage=0, pa
         fail_message("Pagination technique is invalid (should be scroll or search_after): please change parameter in main function")
         return 
 
-    # create the queue and process in charge of analyzing the data resulting from the cache simulation
-    analyzer_queues = [mp.Queue() for i in range(12)]
-
-    p_analyzer = mp.Process(target=Analyzer, args=(analyzer_queues[0],30,1000000,True,"CHR_PFIFO50_time", "CHR_PFIFO50_regular", "CHR_PFIFO50_final",))
-    p_analyzer2 = mp.Process(target=Analyzer, args=(analyzer_queues[1],30,1000000,True,"CHR_PFIFO100_time", "CHR_PFIFO100_regular", "CHR_PFIFO100_final",))
-    p_analyzer3 = mp.Process(target=Analyzer, args=(analyzer_queues[2],30,1000000,True,"CHR_PFIFO200_time", "CHR_PFIFO200_regular", "CHR_PFIFO200_final",))
-    p_analyzer4 = mp.Process(target=Analyzer, args=(analyzer_queues[3],30,1000000,True,"CHR_PFIFO400_time", "CHR_PFIFO400_regular", "CHR_PFIFO400_final",))
-    p_analyzer5 = mp.Process(target=Analyzer, args=(analyzer_queues[4],30,1000000,True,"CHR_PFIFO800_time", "CHR_PFIFO800_regular", "CHR_PFIFO800_final",))
-    p_analyzer6 = mp.Process(target=Analyzer, args=(analyzer_queues[5],30,1000000,True,"CHR_PFIFO1600_time", "CHR_PFIFO1600_regular", "CHR_PFIFO1600_final",))
-    p_analyzer7 = mp.Process(target=Analyzer, args=(analyzer_queues[6],30,1000000,True,"CHR_PFIFO3000_time", "CHR_PFIFO3000_regular", "CHR_PFIFO3000_final",))
-    p_analyzer8 = mp.Process(target=Analyzer, args=(analyzer_queues[7],30,1000000,True,"CHR_PFIFO5000_time", "CHR_PFIFO5000_regular", "CHR_PFIFO5000_final",))
-    p_analyzer9 = mp.Process(target=Analyzer, args=(analyzer_queues[8],30,1000000,True,"CHR_PFIFO10000_time", "CHR_PFIFO10000_regular", "CHR_PFIFO10000_final",))
-    p_analyzer10 = mp.Process(target=Analyzer, args=(analyzer_queues[9],30,1000000,True,"CHR_PFIFO20000_time", "CHR_PFIFO20000_regular", "CHR_PFIFO20000_final",))
-    p_analyzer11 = mp.Process(target=Analyzer, args=(analyzer_queues[10],30,1000000,True,"CHR_PFIFO50000_time", "CHR_PFIFO50000_regular", "CHR_PFIFO50000_final",))
-    p_analyzer12 = mp.Process(target=Analyzer, args=(analyzer_queues[11],30,1000000,True,"CHR_PFIFO100000_time", "CHR_PFIFO100000_regular", "CHR_PFIFO100000_final",))
-    p_analyzers = [p_analyzer, p_analyzer2, p_analyzer3, p_analyzer4, p_analyzer5, p_analyzer6, p_analyzer7, p_analyzer8, p_analyzer9, p_analyzer10, p_analyzer11, p_analyzer12]
+    analyzer_queues, p_analyzers = load.analyzers("PLRU")
     
 
     # start the processes
@@ -193,7 +166,7 @@ if __name__ == '__main__':
 
     # Check parameter doc from process_coordination function for more details
     processes_coordination_parallel(index_name="batch3-*", host="192.168.100.146", port=9200, default_maxage=300, pagination_technique="Scroll", stop_after=-1)
-    # processes_coordination_single_simulation(index_name="batch3-*", host="192.168.100.146", port=9200, default_maxage=300, pagination_technique="Scroll", stop_after=-1, clairvoyant=True)
+    # processes_coordination_single_simulation(index_name="batch3-*", host="192.168.100.146", port=9200, default_maxage=300, pagination_technique="Scroll", stop_after=-1, clairvoyant=False)
 
     end = time.time()
 

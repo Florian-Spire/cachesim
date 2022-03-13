@@ -26,7 +26,7 @@ class Cache(ABC):
         self.__maxsize = maxsize
 
         # keep track of the time
-        self.__clock = None
+        self.__clock = 0
 
         self.__write_log = write_log
 
@@ -62,18 +62,18 @@ class Cache(ABC):
         :return: Request status (Status).
         """
 
+        if time>self.clock: self._delete_expired(time)
+
         # update the internal clock
         self.clock = time
 
         # try to get the object from cache
         stored = self._lookup(obj)
         if stored is not None:
-
-            # retrieved from cache, check expires
-            if not stored.isexpired(self.clock):
-                # HIT, "serv" object from cache
-                self.__log(stored, Status.HIT)
-                return Status.HIT
+            stored.enter = self.clock
+            # HIT, "serv" object from cache
+            self.__log(stored, Status.HIT)
+            return Status.HIT
 
         # MISS: not in cache or expired --> just simulate fetch!
         obj.fetched = True
@@ -99,6 +99,15 @@ class Cache(ABC):
 
         :param fetched: Object fetched.
         :return: True, if object may enter the cache, False for bypass the cache and go for PASS.
+        """
+        pass
+
+    @abstractmethod
+    def _delete_expired(self, time: int):
+        """
+        Implement this method to delete the objects expired in the cache.
+
+        :param time: Current time.
         """
         pass
 
@@ -142,6 +151,9 @@ class NonCache(Cache):
     def _store(self, fetched: Obj):
         pass
 
+    def _delete_expired(self, time: int) -> bool:
+        pass
+
 
 class FIFOCache(Cache):
     """
@@ -169,12 +181,59 @@ class FIFOCache(Cache):
         # put the new object at the end of the cache
         self._cache.append(fetched)
 
+    def _delete_expired(self, time: int):
+        self._cache = [obj for obj in self._cache if not obj.isexpired(time)]
+
 
 class ProtectedFIFOCache(FIFOCache):
     """
     Same as FIFOCache, but big (> 10% of total cache size) object are not allowed to enter the cache.
     """
 
+    def _admit(self, fetched: Obj) -> bool:
+        # allow only small objects to enter the cache
+        return fetched.size <= self.maxsize * 0.1
+
+class LRUCache(Cache):
+    """
+    First in First out cache model.
+    """
+
+    def __init__(self, maxsize: int, logger=None, write_log=False):
+        super().__init__(maxsize, logger, write_log)
+
+        # implement a FIFO for the cache itself
+        self._cache = []
+
+    def _lookup(self, requested: Obj) -> Optional[Obj]:
+        # check if object already in cache
+        cached_obj = next((x for x in self._cache if x == requested), None)
+        # If in cache replace the element at the end of the list
+        if cached_obj is not None:
+            self._cache.remove(cached_obj)
+            requested.enter = self.clock
+            requested.fetched = True
+            self._cache.append(requested)
+        return requested
+
+    def _admit(self, fetched: Obj) -> bool:
+        return True
+
+    def _store(self, fetched: Obj):
+        # trigger cache eviction if needed
+        while fetched.size <= self.maxsize < sum(self._cache) + fetched.size:
+            self._cache.pop(0)
+
+        # put the new object at the end of the cache
+        self._cache.append(fetched)
+
+    def _delete_expired(self, time: int):
+        self._cache = [obj for obj in self._cache if not obj.isexpired(time)]
+
+class ProtectedLRUCache(LRUCache):
+    """
+    Same as LRU cache, but big (> 10% of total cache size) object are not allowed to enter the cache.
+    """
     def _admit(self, fetched: Obj) -> bool:
         # allow only small objects to enter the cache
         return fetched.size <= self.maxsize * 0.1
@@ -206,26 +265,12 @@ class Clairvoyant(Cache):
 
         self.__index_name = index_name
 
-        # keep track of the time
-        self.__clock = 0
-
         # setup logging
         if logger is None:
             self.__logger = logging.getLogger(name=self.__class__.__name__)
             # self._logger.setLevel(logging.DEBUG)  TODO: FIX this
         else:
             self.__logger = logger
-
-    @property
-    def clock(self) -> float:
-        """Current time."""
-        return self.__clock
-
-    @clock.setter
-    def clock(self, time: float):
-        """Update current time."""
-        assert self.__clock is None or time >= self.__clock, f"Time passes, you will never become younger!"
-        self.__clock = time
 
     def _lookup(self, requested: Obj) -> Optional[Obj]:
         # check if object already in cache
@@ -262,6 +307,9 @@ class Clairvoyant(Cache):
             self._cache[max_key].pop(0) # Evict one element with furthest next access time
             if len(self._cache[max_key]) == 0: del self._cache[max_key]
 
+    def _delete_expired(self, time: int):
+        pass
+
     def recv(self, time: float, es_id, obj: Obj) -> Status:
         """
         Call this function to place a request to the cache.
@@ -281,12 +329,9 @@ class Clairvoyant(Cache):
         # try to get the object from cache
         stored = self._lookup(obj)
         if stored is not None:
-
-            # retrieved from cache, check expires
-            if not stored.isexpired(self.clock):
-                # HIT, "serv" object from cache
-                self.__log(stored, Status.HIT)
-                return Status.HIT
+            # HIT, "serv" object from cache
+            self.__log(stored, Status.HIT)
+            return Status.HIT
 
         # MISS: not in cache or expired --> just simulate fetch!
         obj.fetched = True
