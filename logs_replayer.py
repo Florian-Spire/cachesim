@@ -2,6 +2,7 @@ from elasticsearch import Elasticsearch
 from cachesim import Obj
 import sys
 
+
 def connect_elasticsearch(domain, port):
     """
     Python Elasticsearch Client: connection to elasticsearch
@@ -11,7 +12,7 @@ def connect_elasticsearch(domain, port):
     """
     host = "http://" + domain + ":" + str(port)
     print(host)
-    es = Elasticsearch([host], request_timeout = 30, max_retries=10, retry_on_timeout=True)
+    es = Elasticsearch([host], request_timeout=30, max_retries=10, retry_on_timeout=True)
     if es.ping():
         print('Elasticsearch is connected!')
     else:
@@ -22,8 +23,9 @@ def connect_elasticsearch(domain, port):
 def fail_message(message, write_in_file=True):
     print(message, file=sys.stderr)
     if write_in_file:
-        with open("./results/" + "fail.txt",'w',encoding = 'utf-8') as f:
+        with open("./results/" + "fail.txt", 'w', encoding='utf-8') as f:
             print(message, file=f)
+
 
 def es_query_scroll(q, index_name, host, port, search_size=10000, stop_after=-1):
     """
@@ -42,34 +44,37 @@ def es_query_scroll(q, index_name, host, port, search_size=10000, stop_after=-1)
 
     # End of task if the indices does not exist in ES 
     if not es.indices.exists(index=index_name, allow_no_indices=False):
-            fail_message("Query failed: the index does not exist in Elasticsearch")
-            q.send(None)
-            q.close()
-            return
+        fail_message("Query failed: the index does not exist in Elasticsearch")
+        q.send(None)
+        q.close()
+        return
 
     # The following query returns for each log in the ES cluster the Epoch time (in second), the path = ID of the object, the content lenght = size of the object and maxage = how long content will be cached
-    search_results = es.search(index=index_name, scroll = '2m', _source=["path", "contentlength", "maxage"], query={"match_all": {}}, size=search_size, docvalue_fields=[{"field": "@timestamp","format": "epoch_second"}], sort=[{"@timestamp": {"order": "asc"}}], track_total_hits=True, version=False)
+    search_results = es.search(index=index_name, scroll='2m', _source=["path", "contentlength", "maxage"],
+                               query={"match_all": {}}, size=search_size,
+                               docvalue_fields=[{"field": "@timestamp", "format": "epoch_second"}],
+                               sort=[{"@timestamp": {"order": "asc"}}], track_total_hits=True, version=False)
 
     # ES limits the number of results to 10,000. Using the scroll API and scroll ID allows to surpass this limit and to distribute the results in manageable chunks
     sid = search_results['_scroll_id']
 
     print("Total number of logs: ", search_results['hits']['total']['value'])
     print("Count API: ", es.count(index=index_name)['count'])
-    if(search_results['hits']['total']['value']!=es.count(index=index_name)['count']):
+    if (search_results['hits']['total']['value'] != es.count(index=index_name)['count']):
         fail_message("Query failed: the total number of logs that can be fetched is not consistent (number of results should be " + str(es.count(index=index_name)['count']) + " but the search returned " + str(search_results['hits']['total']['value']) + " documents)")
         q.send(None)
         q.close()
-        return 
-        
-    total_processed=0
-    while len(search_results['hits']['hits']) > 0 and (stop_after==-1 or stop_after>total_processed):
+        return
+
+    total_processed = 0
+    while len(search_results['hits']['hits']) > 0 and (stop_after == -1 or stop_after > total_processed):
         # Update the scroll ID
         sid = search_results['_scroll_id']
         q.send(search_results["hits"]["hits"])
-        total_processed+=len(search_results['hits']['hits'])
-        search_results = es.scroll(scroll_id = sid, scroll = '2m')
+        total_processed += len(search_results['hits']['hits'])
+        search_results = es.scroll(scroll_id=sid, scroll='2m')
 
-    es.clear_scroll(scroll_id = sid)
+    es.clear_scroll(scroll_id=sid)
     print("End of query")
     q.send(None)
     q.close()
@@ -92,37 +97,43 @@ def es_query_search_after(q, index_name, host, port, search_size=10000, stop_aft
 
     # End of task if the indices does not exist in ES 
     if not es.indices.exists(index=index_name, allow_no_indices=False):
-            q.send(None)
-            q.close()
-            return
+        q.send(None)
+        q.close()
+        return
 
-    #ES point-in-time
+    # ES point-in-time
     pit = es.open_point_in_time(index=index_name, keep_alive="2m")['id']
 
     # The following query returns for each log in the ES cluster the Epoch time (in second), the path = ID of the object, the content lenght = size of the object and maxage = how long content will be cached
-    search_results = es.search(_source=["path", "contentlength", "maxage"], query={"match_all": {}}, size=search_size, docvalue_fields=[{"field": "@timestamp","format": "epoch_second"}], sort=[{"@timestamp": {"order": "asc"}}], pit={"id":  pit, "keep_alive": "2m"}, track_total_hits=True, version=False)
+    search_results = es.search(_source=["path", "contentlength", "maxage"], query={"match_all": {}}, size=search_size,
+                               docvalue_fields=[{"field": "@timestamp", "format": "epoch_second"}],
+                               sort=[{"@timestamp": {"order": "asc"}}], pit={"id": pit, "keep_alive": "2m"},
+                               track_total_hits=True, version=False)
 
     print("Total number of logs: ", search_results['hits']['total']['value'])
     print("Count API: ", es.count(index=index_name)['count'])
-    if(search_results['hits']['total']['value']!=es.count(index=index_name)['count']):
+    if (search_results['hits']['total']['value'] != es.count(index=index_name)['count']):
         fail_message("Query failed: the total number of logs that can be fetched is not consistent (number of results should be " + str(es.count(index=index_name)['count']) + " but the search returned " + str(search_results['hits']['total']['value']) + " documents)")
         q.send(None)
         q.close()
-        return 
-    total_processed=0 # Total number of data already processed
+        return
+    total_processed = 0  # Total number of data already processed
 
-    while len(search_results['hits']['hits']) > 0 and (stop_after==-1 or stop_after>total_processed):
+    while len(search_results['hits']['hits']) > 0 and (stop_after == -1 or stop_after > total_processed):
         # Update the scroll ID
         last_value = search_results["hits"]["hits"][-1]["sort"]
         q.send(search_results["hits"]["hits"])
-        total_processed+=len(search_results['hits']['hits'])
-        search_results = es.search(_source=["path", "contentlength", "maxage"], search_after=last_value, query={"match_all": {}}, size=search_size, docvalue_fields=[{"field": "@timestamp","format": "epoch_second"}], sort=[{"@timestamp": {"order": "asc"}}], pit={"id":  pit, "keep_alive": "5m"}, track_total_hits=True, version=False)
+        total_processed += len(search_results['hits']['hits'])
+        search_results = es.search(_source=["path", "contentlength", "maxage"], search_after=last_value,
+                                   query={"match_all": {}}, size=search_size,
+                                   docvalue_fields=[{"field": "@timestamp", "format": "epoch_second"}],
+                                   sort=[{"@timestamp": {"order": "asc"}}], pit={"id": pit, "keep_alive": "5m"},
+                                   track_total_hits=True, version=False)
 
     es.close_point_in_time(body={"id": pit})
     print("End of query")
     q.send(None)
     q.close()
-
 
 
 def cache_simulation(search_results, maxage, cache):

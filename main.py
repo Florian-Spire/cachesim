@@ -20,16 +20,15 @@ def processes_coordination_single_simulation(index_name, host, port, default_max
     :param host: IP address of ES instance
     :param port: port of ES instance
     :param default_maxage: default maxage value if not indicated in HTTP cache header
-    :pagination_technique: pagination technique used for paginating the results: 'Scroll' or 'Search_after'
-    :stop_after: -1 means that we iterate over the whole index, other values stop the program after the number indicated (for example 100 to run the program only on the 100 first values from the index)
-    :param: true if clairvoyant cache is used, false otherwise (warning: clairvoyant cannot be mixed with other type of caches as it requires knowledge of the future)
+    :param pagination_technique: pagination technique used for paginating the results: 'Scroll' or 'Search_after'
+    :param stop_after: -1 means that we iterate over the whole index, other values stop the program after the number indicated (for example 100 to run the program only on the 100 first values from the index)
+    :param clairvoyant: true if clairvoyant cache is used, false otherwise (warning: clairvoyant cannot be mixed with other type of caches as it requires knowledge of the future)
     """
 
     # create cache
     cache = Clairvoyant(100000, connect_elasticsearch(host, port), index_name)
     # cache = ProtectedFIFOCache(100000)
 
-    
     # define objects
     # x = Obj('x', 1000, 300)
     # a = Obj('a', 100, 300)
@@ -92,8 +91,8 @@ def processes_coordination_parallel(index_name, host, port, default_maxage=0, pa
     :param host: IP address of ES instance
     :param port: port of ES instance
     :param default_maxage: default maxage value if not indicated in HTTP cache header
-    :pagination_technique: pagination technique used for paginating the results: 'Scroll' or 'Search_after'
-    :stop_after: -1 means that we iterate over the whole index, other values stop the program after the number indicated (for example 100 to run the program only on the 100 first values from the index)
+    :param pagination_technique: pagination technique used for paginating the results: 'Scroll' or 'Search_after'
+    :param stop_after: -1 means that we iterate over the whole index, other values stop the program after the number indicated (for example 100 to run the program only on the 100 first values from the index)
     """
 
     # create cache

@@ -271,7 +271,7 @@ class Clairvoyant(Cache):
         :param es_id: id of the document referenced in ES
         :return: Request status (Status).
         """
-        if self.clock < time: self._es_ids.clear() # if clock moves forward we can clear the IDs list because the ES queries only search the documents after the time of the clock
+        if self.clock < time: self._es_ids.clear() # if clock moves forward since last time we can clear the IDs list because the ES queries only search the documents after the time of the clock
         # update the internal clock
         self.clock = time
 
