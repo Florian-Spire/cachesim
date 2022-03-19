@@ -74,8 +74,8 @@ def processes_coordination_single_simulation(index_name, host, port, default_max
         for log in search_results:
             if isinstance(log["_source"]["maxage"], int): obj = Obj(int(log["_source"]["path"]), int(log["_source"]["contentlength"]), int(log["_source"]["maxage"]))
             else: obj = Obj(int(log["_source"]["path"]), int(log["_source"]["contentlength"]), default_maxage) # default value if maxage is not indicated (300)
-            if clairvoyant: status_list.append(cache.recv(int(log["fields"]["@timestamp"][0]), log["_id"], obj))
-            else: status_list.append(cache.recv(int(log["fields"]["@timestamp"][0]), obj))
+            if clairvoyant: status_list.append(cache.recv(float(log["fields"]["@timestamp"][0]), log["_id"], obj))
+            else: status_list.append(cache.recv(float(log["fields"]["@timestamp"][0]), obj))
         analyzer_queue.put([int(search_results[-1]["fields"]["@timestamp"][0]), status_list]) # last timestamp and list of status are sent to the analyzer at the end of the request
         search_results = parent_query.recv() # data are received from the process fetching es data
 

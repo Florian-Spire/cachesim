@@ -148,5 +148,5 @@ def cache_simulation(search_results, maxage, cache):
     for log in search_results:
         if isinstance(log["_source"]["maxage"], int): obj = Obj(int(log["_source"]["path"]), int(log["_source"]["contentlength"]), int(log["_source"]["maxage"]))
         else: obj = Obj(int(log["_source"]["path"]), int(log["_source"]["contentlength"]), maxage) # default value if maxage is not indicated
-        status_list.append(cache.recv(int(log["fields"]["@timestamp"][0]), obj)) # keep trace of the status result from the cache simulation
+        status_list.append(cache.recv(float(log["fields"]["@timestamp"][0]), obj)) # keep trace of the status result from the cache simulation
     return status_list

@@ -103,7 +103,7 @@ class Cache(ABC):
         pass
 
     @abstractmethod
-    def _delete_expired(self, time: int):
+    def _delete_expired(self, time: float):
         """
         Implement this method to delete the objects expired in the cache.
 
@@ -182,7 +182,7 @@ class FIFOCache(Cache):
             self._cache.pop(0)
 
 
-    def _delete_expired(self, time: int):
+    def _delete_expired(self, time: float):
         self._cache = [obj for obj in self._cache if not obj.isexpired(time)]
 
 
@@ -230,7 +230,7 @@ class LRUCache(Cache):
             self._cache.pop(0)
 
 
-    def _delete_expired(self, time: int):
+    def _delete_expired(self, time: float):
         self._cache = [obj for obj in self._cache if not obj.isexpired(time)]
 
 class ProtectedLRUCache(LRUCache):
@@ -284,7 +284,7 @@ class LFUCache(Cache):
             self._cache.pop(drop)
         
 
-    def _delete_expired(self, time: int):
+    def _delete_expired(self, time: float):
         self._cache = [obj for obj in self._cache if not obj.isexpired(time)]
 
 class ProtectedLFUCache(LFUCache):
@@ -348,7 +348,7 @@ class Clairvoyant(Cache):
             for obj in self._cache[min_key]: # update the access time for all objects for which the time is passed
                 query = {"bool": {"filter": [{"term": {"path": obj.index}}], "must": [{"range": {"@timestamp":{"gte":self.clock, "format": "epoch_second"}}}], "must_not": [{"terms": {"_id": self._es_ids}}]}}
                 search_results = self._es.search(index=self.__index_name, query=query, size=1, docvalue_fields=[{"field": "@timestamp","format": "epoch_second"}], sort=[{"@timestamp": {"order": "asc"}}], version=False)
-                if len(search_results["hits"]["hits"])>0: self._cache.setdefault(int(search_results["hits"]["hits"][0]["fields"]["@timestamp"][0]), []).append(obj) # if the object is never called again in the future
+                if len(search_results["hits"]["hits"])>0: self._cache.setdefault(float(search_results["hits"]["hits"][0]["fields"]["@timestamp"][0]), []).append(obj) # if the object is never called again in the future
                 self._cache[min_key].remove(obj)
                 if len(self._cache[min_key]) == 0: del self._cache[min_key] # when we processed every object destroy the dict element
 
@@ -356,7 +356,7 @@ class Clairvoyant(Cache):
         query = {"bool": {"filter": [{"term": {"path": fetched.index}}], "must": [{"range": {"@timestamp":{"gte":self.clock, "format": "epoch_second"}}}], "must_not": [{"terms": {"_id": self._es_ids}}]}} 
         search_results = self._es.search(index=self.__index_name, query=query, size=1, docvalue_fields=[{"field": "@timestamp","format": "epoch_second"}], sort=[{"@timestamp": {"order": "asc"}}], version=False)
         if len(search_results["hits"]["hits"])==0: return # don't store the object if never called after
-        self._cache.setdefault(int(search_results["hits"]["hits"][0]["fields"]["@timestamp"][0]), []).append(fetched)
+        self._cache.setdefault(float(search_results["hits"]["hits"][0]["fields"]["@timestamp"][0]), []).append(fetched)
 
         # 3. Trigger cache eviction if needed
         while fetched.size <= self.maxsize < sum([obj for sublist in self._cache.values() for obj in sublist]):
@@ -364,7 +364,7 @@ class Clairvoyant(Cache):
             self._cache[max_key].pop(0) # Evict one element with furthest next access time
             if len(self._cache[max_key]) == 0: del self._cache[max_key]
 
-    def _delete_expired(self, time: int):
+    def _delete_expired(self, time: float):
         pass
 
     def recv(self, time: float, es_id, obj: Obj) -> Status:
