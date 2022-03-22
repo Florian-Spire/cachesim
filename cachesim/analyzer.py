@@ -107,8 +107,8 @@ class Analyzer:
         if self.__CHR_final and self.__last_total!=0:
             with open("./results/" + self.__file_name_CHR_final + ".csv",'w',encoding = 'utf-8') as f:
                 csv_writer = csv.writer(f)
-                csv_writer.writerow(['Total', 'CHR'])
-                csv_writer.writerow([self.__hit + self.__miss + self.__pass, self.cache_hit_ratio()*100])
+                csv_writer.writerow(['Total', 'CHR', 'Hit', 'Miss', 'Pass'])
+                csv_writer.writerow([self.__hit + self.__miss + self.__pass, self.cache_hit_ratio()*100, self.__hit, self.__miss, self.__pass])
 
     def hit(self):
         """

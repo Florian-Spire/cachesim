@@ -96,7 +96,7 @@ def processes_coordination_parallel(index_name, host, port, default_maxage=0, pa
     :param stop_after: -1 means that we iterate over the whole index, other values stop the program after the number indicated (for example 100 to run the program only on the 100 first values from the index)
     """
 
-    caches = load.protected_LFU_caches()
+    caches = load.all_protected_caches()
 
     
     # define objects
@@ -127,9 +127,10 @@ def processes_coordination_parallel(index_name, host, port, default_maxage=0, pa
         fail_message("Pagination technique is invalid (should be scroll or search_after): please change parameter in main function")
         return 
 
-    analyzer_queues, p_analyzers = load.analyzers("PLFU")
-    
+    analyzer_queues, p_analyzers = load.all_analyzers(["PFIFO", "PLRU", "PLFU"])
 
+    assert len(caches) == len(analyzer_queues) == len(p_analyzers), f"The number of caches should be equal to the number of analyzers!"
+    
     # start the processes
     p_query.start()
 
@@ -165,8 +166,8 @@ if __name__ == '__main__':
     start = time.time()
 
     # Check parameter doc from process_coordination function for more details
-    processes_coordination_parallel(index_name="batch3-*", host="192.168.100.146", port=9200, default_maxage=300, pagination_technique="Scroll", stop_after=-1)
-    # processes_coordination_single_simulation(index_name="batch3-*", host="192.168.100.146", port=9200, default_maxage=300, pagination_technique="Scroll", stop_after=-1, clairvoyant=False)
+    processes_coordination_parallel(index_name="batch3-*", host="192.168.100.147", port=9200, default_maxage=300, pagination_technique="Scroll", stop_after=-1)
+    # processes_coordination_single_simulation(index_name="batch3-*", host="192.168.100.147", port=9200, default_maxage=300, pagination_technique="Scroll", stop_after=-1, clairvoyant=False)
 
     end = time.time()
 
