@@ -10,13 +10,14 @@ class Analyzer:
     Class to provide various measurements and analyzes related to the cache performance.
     """
 
-    def __init__(self, cache_queue: multiprocessing.Queue, writing_frquency_time=60, writing_frequency_number=0, CHR_final = True,
-                 file_name_frequency_time="CHR_by_time", file_name_frequency_number="CHR_regular", file_name_CHR_final="CHR_final"):
+    def __init__(self, cache_queue: multiprocessing.Queue, writing_frquency_time=60, writing_frequency_number=0, movies_time_interval = 0, CHR_final = True,
+                 file_name_frequency_time="CHR_by_time", file_name_frequency_number="CHR_regular", file_name_CHR_final="CHR_final", file_name_CHR_by_movie = "CHR_movies"):
         """
         Analyzer initialization.
         :param cache_queue: queue between the process in charge of the caching simulation and the analyzer process
         :param writing_frequency_number: frequency used to write the measurements results in txt file (0 for not writing anything in file), e.g: 1,000 will write the results once every 1,000 objects processed, 0 to disable
         :param writing_frquency_time: frequency in time to write results in file (in seconds), e.g: 60 means that the results will be written once every minutes (approximately, results are only sent periodically to the analyzer), 0 to disable
+        :param movies_time_interval: interval in time to which statistics about the cache hit ratio of the different movies should be written in file
         :param file_name_frequency_time: name of the file where the analyzes by time should be written
         :param file_name_frequency_number: name of the file where the analyzes by frequency should be written
         :param CHR_final: True if the final cache hit ratio should be written in file at the end, false otherwise
@@ -27,13 +28,16 @@ class Analyzer:
         self.__miss = 0  # Number of times the cache returns a "miss" answer
         self.__pass = 0  # Number of times the cache returns a "pass" answer
         self.__previous = [0,0,0] # Previous values for hit, miss and pass
+        self.__movies = {} # Dictionnary containing the simulator answers (hit, miss, pass) by movies. Key: name of the movie, value: tuple with number of (hit, miss, pass)
 
         self.__last_time = 0  # Last timestamp registered by the analyzer object
+        self.__last_time_movie = 0  # Last timestamp registered by the analyzer object for movie results
         self.__last_total = 0  # Keep trace of the last total number of analyzes done
         
         self.__CHR_final = CHR_final  # Look at CHR_final parameter description for more info
         self.__frequency_number = writing_frequency_number  # Look at writing_frequency_number parameter description for more info
         self.__frequency_time = writing_frquency_time  # Look at writing_frquency_time parameter description for more info
+        self.__movies_time_interval = movies_time_interval # Look at movies_time_interval parameter description for more info
         self.__file_name_CHR_final = file_name_CHR_final  # Look at file_name_CHR_final parameter description for more info
 
         # Creation of storing files
@@ -50,6 +54,13 @@ class Analyzer:
                                     encoding='UTF8')  # Open txt file for writing the analyzes results
             self.__writer_time = csv.writer(self.__file_time)  # Open CSV file
             self.__writer_time.writerow(['Time', 'Total', 'Hit', 'Miss', 'Pass', 'CHR'])  # Write CSV header
+
+        # Cache hit ratio by movie
+        if self.__movies_time_interval != 0:
+            self.__file_movie = open("./results/" + file_name_CHR_by_movie + ".csv", "w",
+                                    encoding='UTF8')  # Open txt file for writing the analyzes results
+            self.__writer_movie = csv.writer(self.__file_movie)  # Open CSV file
+            self.__writer_movie.writerow(['MovieID', 'Epoch_second', 'Hit', 'Miss', 'Pass', 'CHR'])  # Write CSV header
 
         # Launch function managing the receiving of the data from the cache simulation process and launching the corresponding analyzes tasks when received
         self.receive_status()
@@ -73,6 +84,7 @@ class Analyzer:
         :param cache_queue:
         """
         status = self.__q.get()  # Receive the data from the cache simulation process
+        self.__last_time_movie = status[0]
 
         while status is not None:  # None is sent by the cache simulation when the simulation is over
             timestamp = status[0]
@@ -92,6 +104,20 @@ class Analyzer:
             if timestamp - self.__last_time >= self.__frequency_time != 0:
                 self.__last_time = timestamp
                 self.save_time_results()
+
+            if self.__movies_time_interval != 0:
+                for index, movie_name in enumerate(status[2]):
+                    if movie_name == -1: continue # -1 means that the movie name is not documented
+                    if status[1][index] == Status.HIT:
+                        self.__movies[movie_name] = tuple(map(sum, zip(self.__movies.get(movie_name, (0,0,0)), (1,0,0))))
+                    elif status[1][index] == Status.PASS:
+                        self.__movies[movie_name] = tuple(map(sum, zip(self.__movies.get(movie_name, (0,0,0)), (0,0,1))))
+                    else:
+                        self.__movies[movie_name] = tuple(map(sum, zip(self.__movies.get(movie_name, (0,0,0)), (0,1,0))))
+
+                if timestamp - self.__last_time_movie >= self.__movies_time_interval:
+                    self.__last_time_movie = timestamp
+                    self.save_movies_results()
 
             status = self.__q.get()
 
@@ -162,3 +188,12 @@ class Analyzer:
              round((hit / (hit + miss + pass_)) * 100, 3)])  # cache hit ratio (CHR) writing
         self.__file_time.flush()
         self.__previous = [self.__hit, self.__miss, self.__pass]
+    
+    def save_movies_results(self):
+        """
+        Write the analyzes results on the disk.
+        """
+        for movie_name, simulation_result in self.__movies.items():
+            self.__writer_movie.writerow([movie_name, self.__last_time_movie, simulation_result[0], simulation_result[1], simulation_result[2], round((simulation_result[0] / (simulation_result[0] + simulation_result[1] + simulation_result[2])) * 100)])
+        self.__file_movie.flush()
+        self.__movies.clear()

@@ -1,13 +1,15 @@
 class Obj:
-    def __init__(self, index, size: int, maxage: int):
+    def __init__(self, index, size: int, maxage: int, group: int):
         """
         :param index: Uniq identifier of the object (hash key).
         :param size: Size of the object.
         :param maxage: Maximum caching time, if non positive, not cacheable.
+        :param group: Group the object belongs to (for example movie identifier).
         """
         self._index = index
         self._size = size
         self._maxage = maxage
+        self._group = group
 
         self._enter = None  # time at the object entered the cache
         self._fetched = False  # object retrieved from origin
@@ -25,6 +27,10 @@ class Obj:
     def maxage(self) -> int:
         assert self.fetched, f"This property should not be known before object fetch!"
         return self._maxage
+
+    @property
+    def group(self):
+        return self._group
 
     @property
     def cacheable(self) -> bool:

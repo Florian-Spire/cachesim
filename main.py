@@ -27,8 +27,8 @@ def processes_coordination_single_simulation(index_name, host, port, default_max
     """
 
     # create cache
-    cache = Clairvoyant(100000, connect_elasticsearch(host, port), index_name)
-    # cache = ProtectedFIFOCache(100000)
+    # cache = Clairvoyant(100000, connect_elasticsearch(host, port), index_name)
+    cache = ProtectedFIFOCache(100000)
 
     # define objects
     # x = Obj('x', 1000, 300)
@@ -60,23 +60,27 @@ def processes_coordination_single_simulation(index_name, host, port, default_max
 
     # create the queue and process in charge of analyzing the data resulting from the cache simulation
     analyzer_queue = mp.Queue()
-    p_analyzer_clairvoyant = mp.Process(target=Analyzer, args=(analyzer_queue,1,1000,True,"CHR_Clairvoyant_100000_time", "CHR_Clairvoyant_100000_regular", "CHR_Clairvoyant_100000_final",))
-    # p_analyzer = mp.Process(target=Analyzer, args=(analyzer_queue,1,1000,True,"CHR_protected_FIFO_100000_time", "CHR_protected_FIFO100000_regular", "CHR_protected_FIFO_100000_final",))
+    # p_analyzer_clairvoyant = mp.Process(target=Analyzer, args=(analyzer_queue,1,1000,3600,True,"CHR_Clairvoyant_time", "CHR_Clairvoyant_regular", "CHR_Clairvoyant_final","CHR_protected_Clairvoyant_movies",))
+    p_analyzer = mp.Process(target=Analyzer, args=(analyzer_queue,1,1000,3600, True,"CHR_protected_FIFO_time", "CHR_protected_regular", "CHR_protected_FIFO_final","CHR_protected_FIFO_movies",))
 
     # start the processes
     p_query.start()
-    p_analyzer_clairvoyant.start()
+    # p_analyzer_clairvoyant.start()
+    p_analyzer.start()
 
     # receive the data from the process running the es queries, send them to the process in charge of the cache simulation and send the simulation data to the analyzer
     search_results = parent_query.recv() # data are received from the process fetching es data
     while search_results is not None:
         status_list=[] # list of status (hit, miss or pass) corresponding to the decisions made by the simulator
+        group_ids=[] # list of the group of the object (for example movie identifier), group_ids[0] is the group of the object corresponding to the decision stored in status_list[0]
         for log in search_results:
-            if isinstance(log["_source"]["maxage"], int): obj = Obj(int(log["_source"]["path"]), int(log["_source"]["contentlength"]), int(log["_source"]["maxage"]))
-            else: obj = Obj(int(log["_source"]["path"]), int(log["_source"]["contentlength"]), default_maxage) # default value if maxage is not indicated (300)
+            if log["_source"]["livechannel"] is None: log["_source"]["livechannel"] = -1
+            if isinstance(log["_source"]["maxage"], int): obj = Obj(int(log["_source"]["path"]), int(log["_source"]["contentlength"]), int(log["_source"]["maxage"]), int(log["_source"]["livechannel"]))
+            else: obj = Obj(int(log["_source"]["path"]), int(log["_source"]["contentlength"]), default_maxage, int(log["_source"]["livechannel"])) # default value if maxage is not indicated (300)
             if clairvoyant: status_list.append(cache.recv(float(log["fields"]["@timestamp"][0]), log["_id"], obj))
             else: status_list.append(cache.recv(float(log["fields"]["@timestamp"][0]), obj))
-        analyzer_queue.put([int(search_results[-1]["fields"]["@timestamp"][0]), status_list]) # last timestamp and list of status are sent to the analyzer at the end of the request
+            group_ids.append(obj.group)
+        analyzer_queue.put([int(search_results[-1]["fields"]["@timestamp"][0]), status_list, group_ids]) # last timestamp and list of status are sent to the analyzer at the end of the request
         search_results = parent_query.recv() # data are received from the process fetching es data
 
     analyzer_queue.put(None) # notify to the analyzer the end of the incoming data
@@ -96,7 +100,8 @@ def processes_coordination_parallel(index_name, host, port, default_maxage=0, pa
     :param stop_after: -1 means that we iterate over the whole index, other values stop the program after the number indicated (for example 100 to run the program only on the 100 first values from the index)
     """
 
-    caches = load.all_protected_caches()
+    # caches = load.all_protected_caches()
+    caches = load.one_each_cache(10000)
 
     
     # define objects
@@ -127,7 +132,8 @@ def processes_coordination_parallel(index_name, host, port, default_maxage=0, pa
         fail_message("Pagination technique is invalid (should be scroll or search_after): please change parameter in main function")
         return 
 
-    analyzer_queues, p_analyzers = load.all_analyzers(["PFIFO", "PLRU", "PLFU"])
+    # analyzer_queues, p_analyzers = load.all_analyzers(["PFIFO", "PLRU", "PLFU"])
+    analyzer_queues, p_analyzers = load.one_each_analyzers()
 
     assert len(caches) == len(analyzer_queues) == len(p_analyzers), f"The number of caches should be equal to the number of analyzers!"
     
@@ -153,7 +159,7 @@ def processes_coordination_parallel(index_name, host, port, default_maxage=0, pa
         
         # Send results to the analyzers (one individual analyzer for each simulation)
         for index, status in enumerate(status_caches):
-            analyzer_queues[index].put([int(search_results[-1]["fields"]["@timestamp"][0]), status]) # last timestamp and list of status are sent to the analyzer at the end of the request
+            analyzer_queues[index].put([int(search_results[-1]["fields"]["@timestamp"][0]), status[0], status[1]]) # last timestamp and list of status (status[0]: status of the simulation, status[1] group ids] are sent to the analyzer at the end of the request
 
         search_results = parent_query.recv() # data are received from the process fetching es data
 

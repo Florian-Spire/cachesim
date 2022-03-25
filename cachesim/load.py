@@ -49,6 +49,14 @@ def protected_LFU_caches():
     cache12 = ProtectedLFUCache(1000000)
     return [cache, cache2, cache3, cache4, cache5, cache6, cache7, cache8, cache9, cache10, cache11, cache12]
 
+def one_each_cache(size_cache):
+    # create cache
+    cachePFIFO = ProtectedFIFOCache(size_cache)
+    cachePLRU = ProtectedLRUCache(size_cache)
+    cachePLFU = ProtectedLFUCache(size_cache)
+    return [cachePFIFO, cachePLRU, cachePLFU]
+
+
 def all_protected_caches():
     # Protected FIFO
     cache = ProtectedFIFOCache(50,  write_log=False)
@@ -97,64 +105,72 @@ def analyzers(cache_name):
     # create the queue and process in charge of analyzing the data resulting from the cache simulation
     analyzer_queues = [mp.Queue() for i in range(12)]
 
-    p_analyzer  = mp.Process(target=Analyzer, args=(analyzer_queues[0],30,1000000,True,"CHR_"+cache_name+"_50_time", "CHR_"+cache_name+"_50_regular", "CHR_"+cache_name+"_50_final",))
-    p_analyzer2 = mp.Process(target=Analyzer, args=(analyzer_queues[1],30,1000000,True,"CHR_"+cache_name+"_100_time", "CHR_"+cache_name+"_100_regular", "CHR_"+cache_name+"_100_final",))
-    p_analyzer3 = mp.Process(target=Analyzer, args=(analyzer_queues[2],30,1000000,True,"CHR_"+cache_name+"_200_time", "CHR_"+cache_name+"_200_regular", "CHR_"+cache_name+"_200_final",))
-    p_analyzer4 = mp.Process(target=Analyzer, args=(analyzer_queues[3],30,1000000,True,"CHR_"+cache_name+"_500_time", "CHR_"+cache_name+"_500_regular", "CHR_"+cache_name+"_500_final",))
-    p_analyzer5 = mp.Process(target=Analyzer, args=(analyzer_queues[4],30,1000000,True,"CHR_"+cache_name+"_1000_time", "CHR_"+cache_name+"_1000_regular", "CHR_"+cache_name+"_1000_final",))
-    p_analyzer6 = mp.Process(target=Analyzer, args=(analyzer_queues[5],30,1000000,True,"CHR_"+cache_name+"_2000_time", "CHR_"+cache_name+"_2000_regular", "CHR_"+cache_name+"_2000_final",))
-    p_analyzer7 = mp.Process(target=Analyzer, args=(analyzer_queues[6],30,1000000,True,"CHR_"+cache_name+"_5000_time", "CHR_"+cache_name+"_5000_regular", "CHR_"+cache_name+"_5000_final",))
-    p_analyzer8 = mp.Process(target=Analyzer, args=(analyzer_queues[7],30,1000000,True,"CHR_"+cache_name+"_10000_time", "CHR_"+cache_name+"_10000_regular", "CHR_"+cache_name+"_10000_final",))
-    p_analyzer9 = mp.Process(target=Analyzer, args=(analyzer_queues[8],30,1000000,True,"CHR_"+cache_name+"_20000_time", "CHR_"+cache_name+"_20000_regular", "CHR_"+cache_name+"_20000_final",))
-    p_analyzer10 = mp.Process(target=Analyzer, args=(analyzer_queues[9],30,1000000,True,"CHR_"+cache_name+"_50000_time", "CHR_"+cache_name+"_50000_regular", "CHR_"+cache_name+"_50000_final",))
-    p_analyzer11 = mp.Process(target=Analyzer, args=(analyzer_queues[10],30,1000000,True,"CHR_"+cache_name+"_100000_time", "CHR_"+cache_name+"_100000_regular", "CHR_"+cache_name+"_100000_final",))
-    p_analyzer12 = mp.Process(target=Analyzer, args=(analyzer_queues[11],30,1000000,True,"CHR_"+cache_name+"_1000000_time", "CHR_"+cache_name+"_1000000_regular", "CHR_"+cache_name+"_1000000_final",))
+    p_analyzer  = mp.Process(target=Analyzer, args=(analyzer_queues[0],30,1000000,0,True,"CHR_"+cache_name+"_50_time", "CHR_"+cache_name+"_50_regular", "CHR_"+cache_name+"_50_final",))
+    p_analyzer2 = mp.Process(target=Analyzer, args=(analyzer_queues[1],30,1000000,0,True,"CHR_"+cache_name+"_100_time", "CHR_"+cache_name+"_100_regular", "CHR_"+cache_name+"_100_final",))
+    p_analyzer3 = mp.Process(target=Analyzer, args=(analyzer_queues[2],30,1000000,0,True,"CHR_"+cache_name+"_200_time", "CHR_"+cache_name+"_200_regular", "CHR_"+cache_name+"_200_final",))
+    p_analyzer4 = mp.Process(target=Analyzer, args=(analyzer_queues[3],30,1000000,0,True,"CHR_"+cache_name+"_500_time", "CHR_"+cache_name+"_500_regular", "CHR_"+cache_name+"_500_final",))
+    p_analyzer5 = mp.Process(target=Analyzer, args=(analyzer_queues[4],30,1000000,0,True,"CHR_"+cache_name+"_1000_time", "CHR_"+cache_name+"_1000_regular", "CHR_"+cache_name+"_1000_final",))
+    p_analyzer6 = mp.Process(target=Analyzer, args=(analyzer_queues[5],30,1000000,0,True,"CHR_"+cache_name+"_2000_time", "CHR_"+cache_name+"_2000_regular", "CHR_"+cache_name+"_2000_final",))
+    p_analyzer7 = mp.Process(target=Analyzer, args=(analyzer_queues[6],30,1000000,0,True,"CHR_"+cache_name+"_5000_time", "CHR_"+cache_name+"_5000_regular", "CHR_"+cache_name+"_5000_final",))
+    p_analyzer8 = mp.Process(target=Analyzer, args=(analyzer_queues[7],30,1000000,0,True,"CHR_"+cache_name+"_10000_time", "CHR_"+cache_name+"_10000_regular", "CHR_"+cache_name+"_10000_final",))
+    p_analyzer9 = mp.Process(target=Analyzer, args=(analyzer_queues[8],30,1000000,0,True,"CHR_"+cache_name+"_20000_time", "CHR_"+cache_name+"_20000_regular", "CHR_"+cache_name+"_20000_final",))
+    p_analyzer10 = mp.Process(target=Analyzer, args=(analyzer_queues[9],30,1000000,0,True,"CHR_"+cache_name+"_50000_time", "CHR_"+cache_name+"_50000_regular", "CHR_"+cache_name+"_50000_final",))
+    p_analyzer11 = mp.Process(target=Analyzer, args=(analyzer_queues[10],30,1000000,0,True,"CHR_"+cache_name+"_100000_time", "CHR_"+cache_name+"_100000_regular", "CHR_"+cache_name+"_100000_final",))
+    p_analyzer12 = mp.Process(target=Analyzer, args=(analyzer_queues[11],30,1000000,0,True,"CHR_"+cache_name+"_1000000_time", "CHR_"+cache_name+"_1000000_regular", "CHR_"+cache_name+"_1000000_final",))
     return analyzer_queues, [p_analyzer, p_analyzer2, p_analyzer3, p_analyzer4, p_analyzer5, p_analyzer6, p_analyzer7, p_analyzer8, p_analyzer9, p_analyzer10, p_analyzer11, p_analyzer12]
+
+def one_each_analyzers():
+    analyzer_queues = [mp.Queue() for i in range(3)]
+
+    p_analyzer_PFIFO  = mp.Process(target=Analyzer, args=(analyzer_queues[0],30,1000000,21600,True,"CHR_PFIFO_time", "CHR_PFIFO_regular", "CHR_PFIFO_final", "CHR_PFIFO_movies"))
+    p_analyzer_PLRU = mp.Process(target=Analyzer, args=(analyzer_queues[1],30,1000000,21600,True,"CHR_PLRU_time", "CHR_PLRU_regular", "CHR_PLRU_final","CHR_PLRU_movies"))
+    p_analyzer_PLFU = mp.Process(target=Analyzer, args=(analyzer_queues[2],30,1000000,21600,True,"CHR_PLFU_time", "CHR_PLFU_regular", "CHR_PLFU_final","CHR_PLFU_movies"))
+    return analyzer_queues, [p_analyzer_PFIFO, p_analyzer_PLRU, p_analyzer_PLFU]
 
 def all_analyzers(cache_names=["PFIFO", "PLRU", "PLFU"]):
         # create the queue and process in charge of analyzing the data resulting from the cache simulation
     analyzer_queues = [mp.Queue() for i in range(36)]
 
     cache_name = cache_names[0]
-    p_analyzer  = mp.Process(target=Analyzer, args=(analyzer_queues[0],30,1000000,True,"CHR_"+cache_name+"_50_time", "CHR_"+cache_name+"_50_regular", "CHR_"+cache_name+"_50_final",))
-    p_analyzer2 = mp.Process(target=Analyzer, args=(analyzer_queues[1],30,1000000,True,"CHR_"+cache_name+"_100_time", "CHR_"+cache_name+"_100_regular", "CHR_"+cache_name+"_100_final",))
-    p_analyzer3 = mp.Process(target=Analyzer, args=(analyzer_queues[2],30,1000000,True,"CHR_"+cache_name+"_200_time", "CHR_"+cache_name+"_200_regular", "CHR_"+cache_name+"_200_final",))
-    p_analyzer4 = mp.Process(target=Analyzer, args=(analyzer_queues[3],30,1000000,True,"CHR_"+cache_name+"_500_time", "CHR_"+cache_name+"_500_regular", "CHR_"+cache_name+"_500_final",))
-    p_analyzer5 = mp.Process(target=Analyzer, args=(analyzer_queues[4],30,1000000,True,"CHR_"+cache_name+"_1000_time", "CHR_"+cache_name+"_1000_regular", "CHR_"+cache_name+"_1000_final",))
-    p_analyzer6 = mp.Process(target=Analyzer, args=(analyzer_queues[5],30,1000000,True,"CHR_"+cache_name+"_2000_time", "CHR_"+cache_name+"_2000_regular", "CHR_"+cache_name+"_2000_final",))
-    p_analyzer7 = mp.Process(target=Analyzer, args=(analyzer_queues[6],30,1000000,True,"CHR_"+cache_name+"_5000_time", "CHR_"+cache_name+"_5000_regular", "CHR_"+cache_name+"_5000_final",))
-    p_analyzer8 = mp.Process(target=Analyzer, args=(analyzer_queues[7],30,1000000,True,"CHR_"+cache_name+"_10000_time", "CHR_"+cache_name+"_10000_regular", "CHR_"+cache_name+"_10000_final",))
-    p_analyzer9 = mp.Process(target=Analyzer, args=(analyzer_queues[8],30,1000000,True,"CHR_"+cache_name+"_20000_time", "CHR_"+cache_name+"_20000_regular", "CHR_"+cache_name+"_20000_final",))
-    p_analyzer10 = mp.Process(target=Analyzer, args=(analyzer_queues[9],30,1000000,True,"CHR_"+cache_name+"_50000_time", "CHR_"+cache_name+"_50000_regular", "CHR_"+cache_name+"_50000_final",))
-    p_analyzer11 = mp.Process(target=Analyzer, args=(analyzer_queues[10],30,1000000,True,"CHR_"+cache_name+"_100000_time", "CHR_"+cache_name+"_100000_regular", "CHR_"+cache_name+"_100000_final",))
-    p_analyzer12 = mp.Process(target=Analyzer, args=(analyzer_queues[11],30,1000000,True,"CHR_"+cache_name+"_1000000_time", "CHR_"+cache_name+"_1000000_regular", "CHR_"+cache_name+"_1000000_final",))
+    p_analyzer  = mp.Process(target=Analyzer, args=(analyzer_queues[0],30,1000000,0,True,"CHR_"+cache_name+"_50_time", "CHR_"+cache_name+"_50_regular", "CHR_"+cache_name+"_50_final",))
+    p_analyzer2 = mp.Process(target=Analyzer, args=(analyzer_queues[1],30,1000000,0,True,"CHR_"+cache_name+"_100_time", "CHR_"+cache_name+"_100_regular", "CHR_"+cache_name+"_100_final",))
+    p_analyzer3 = mp.Process(target=Analyzer, args=(analyzer_queues[2],30,1000000,0,True,"CHR_"+cache_name+"_200_time", "CHR_"+cache_name+"_200_regular", "CHR_"+cache_name+"_200_final",))
+    p_analyzer4 = mp.Process(target=Analyzer, args=(analyzer_queues[3],30,1000000,0,True,"CHR_"+cache_name+"_500_time", "CHR_"+cache_name+"_500_regular", "CHR_"+cache_name+"_500_final",))
+    p_analyzer5 = mp.Process(target=Analyzer, args=(analyzer_queues[4],30,1000000,0,True,"CHR_"+cache_name+"_1000_time", "CHR_"+cache_name+"_1000_regular", "CHR_"+cache_name+"_1000_final",))
+    p_analyzer6 = mp.Process(target=Analyzer, args=(analyzer_queues[5],30,1000000,0,True,"CHR_"+cache_name+"_2000_time", "CHR_"+cache_name+"_2000_regular", "CHR_"+cache_name+"_2000_final",))
+    p_analyzer7 = mp.Process(target=Analyzer, args=(analyzer_queues[6],30,1000000,0,True,"CHR_"+cache_name+"_5000_time", "CHR_"+cache_name+"_5000_regular", "CHR_"+cache_name+"_5000_final",))
+    p_analyzer8 = mp.Process(target=Analyzer, args=(analyzer_queues[7],30,1000000,0,True,"CHR_"+cache_name+"_10000_time", "CHR_"+cache_name+"_10000_regular", "CHR_"+cache_name+"_10000_final",))
+    p_analyzer9 = mp.Process(target=Analyzer, args=(analyzer_queues[8],30,1000000,0,True,"CHR_"+cache_name+"_20000_time", "CHR_"+cache_name+"_20000_regular", "CHR_"+cache_name+"_20000_final",))
+    p_analyzer10 = mp.Process(target=Analyzer, args=(analyzer_queues[9],30,1000000,0,True,"CHR_"+cache_name+"_50000_time", "CHR_"+cache_name+"_50000_regular", "CHR_"+cache_name+"_50000_final",))
+    p_analyzer11 = mp.Process(target=Analyzer, args=(analyzer_queues[10],30,1000000,0,True,"CHR_"+cache_name+"_100000_time", "CHR_"+cache_name+"_100000_regular", "CHR_"+cache_name+"_100000_final",))
+    p_analyzer12 = mp.Process(target=Analyzer, args=(analyzer_queues[11],30,1000000,0,True,"CHR_"+cache_name+"_1000000_time", "CHR_"+cache_name+"_1000000_regular", "CHR_"+cache_name+"_1000000_final",))
 
     cache_name = cache_names[1]
-    p_analyzer13  = mp.Process(target=Analyzer, args=(analyzer_queues[12],30,1000000,True,"CHR_"+cache_name+"_50_time", "CHR_"+cache_name+"_50_regular", "CHR_"+cache_name+"_50_final",))
-    p_analyzer14 = mp.Process(target=Analyzer, args=(analyzer_queues[13],30,1000000,True,"CHR_"+cache_name+"_100_time", "CHR_"+cache_name+"_100_regular", "CHR_"+cache_name+"_100_final",))
-    p_analyzer15 = mp.Process(target=Analyzer, args=(analyzer_queues[14],30,1000000,True,"CHR_"+cache_name+"_200_time", "CHR_"+cache_name+"_200_regular", "CHR_"+cache_name+"_200_final",))
-    p_analyzer16 = mp.Process(target=Analyzer, args=(analyzer_queues[15],30,1000000,True,"CHR_"+cache_name+"_500_time", "CHR_"+cache_name+"_500_regular", "CHR_"+cache_name+"_500_final",))
-    p_analyzer17 = mp.Process(target=Analyzer, args=(analyzer_queues[16],30,1000000,True,"CHR_"+cache_name+"_1000_time", "CHR_"+cache_name+"_1000_regular", "CHR_"+cache_name+"_1000_final",))
-    p_analyzer18 = mp.Process(target=Analyzer, args=(analyzer_queues[17],30,1000000,True,"CHR_"+cache_name+"_2000_time", "CHR_"+cache_name+"_2000_regular", "CHR_"+cache_name+"_2000_final",))
-    p_analyzer19 = mp.Process(target=Analyzer, args=(analyzer_queues[18],30,1000000,True,"CHR_"+cache_name+"_5000_time", "CHR_"+cache_name+"_5000_regular", "CHR_"+cache_name+"_5000_final",))
-    p_analyzer20 = mp.Process(target=Analyzer, args=(analyzer_queues[19],30,1000000,True,"CHR_"+cache_name+"_10000_time", "CHR_"+cache_name+"_10000_regular", "CHR_"+cache_name+"_10000_final",))
-    p_analyzer21 = mp.Process(target=Analyzer, args=(analyzer_queues[20],30,1000000,True,"CHR_"+cache_name+"_20000_time", "CHR_"+cache_name+"_20000_regular", "CHR_"+cache_name+"_20000_final",))
-    p_analyzer22 = mp.Process(target=Analyzer, args=(analyzer_queues[21],30,1000000,True,"CHR_"+cache_name+"_50000_time", "CHR_"+cache_name+"_50000_regular", "CHR_"+cache_name+"_50000_final",))
-    p_analyzer23 = mp.Process(target=Analyzer, args=(analyzer_queues[22],30,1000000,True,"CHR_"+cache_name+"_100000_time", "CHR_"+cache_name+"_100000_regular", "CHR_"+cache_name+"_100000_final",))
-    p_analyzer24 = mp.Process(target=Analyzer, args=(analyzer_queues[23],30,1000000,True,"CHR_"+cache_name+"_1000000_time", "CHR_"+cache_name+"_1000000_regular", "CHR_"+cache_name+"_1000000_final",))
+    p_analyzer13  = mp.Process(target=Analyzer, args=(analyzer_queues[12],30,1000000,0,True,"CHR_"+cache_name+"_50_time", "CHR_"+cache_name+"_50_regular", "CHR_"+cache_name+"_50_final",))
+    p_analyzer14 = mp.Process(target=Analyzer, args=(analyzer_queues[13],30,1000000,0,True,"CHR_"+cache_name+"_100_time", "CHR_"+cache_name+"_100_regular", "CHR_"+cache_name+"_100_final",))
+    p_analyzer15 = mp.Process(target=Analyzer, args=(analyzer_queues[14],30,1000000,0,True,"CHR_"+cache_name+"_200_time", "CHR_"+cache_name+"_200_regular", "CHR_"+cache_name+"_200_final",))
+    p_analyzer16 = mp.Process(target=Analyzer, args=(analyzer_queues[15],30,1000000,0,True,"CHR_"+cache_name+"_500_time", "CHR_"+cache_name+"_500_regular", "CHR_"+cache_name+"_500_final",))
+    p_analyzer17 = mp.Process(target=Analyzer, args=(analyzer_queues[16],30,1000000,0,True,"CHR_"+cache_name+"_1000_time", "CHR_"+cache_name+"_1000_regular", "CHR_"+cache_name+"_1000_final",))
+    p_analyzer18 = mp.Process(target=Analyzer, args=(analyzer_queues[17],30,1000000,0,True,"CHR_"+cache_name+"_2000_time", "CHR_"+cache_name+"_2000_regular", "CHR_"+cache_name+"_2000_final",))
+    p_analyzer19 = mp.Process(target=Analyzer, args=(analyzer_queues[18],30,1000000,0,True,"CHR_"+cache_name+"_5000_time", "CHR_"+cache_name+"_5000_regular", "CHR_"+cache_name+"_5000_final",))
+    p_analyzer20 = mp.Process(target=Analyzer, args=(analyzer_queues[19],30,1000000,0,True,"CHR_"+cache_name+"_10000_time", "CHR_"+cache_name+"_10000_regular", "CHR_"+cache_name+"_10000_final",))
+    p_analyzer21 = mp.Process(target=Analyzer, args=(analyzer_queues[20],30,1000000,0,True,"CHR_"+cache_name+"_20000_time", "CHR_"+cache_name+"_20000_regular", "CHR_"+cache_name+"_20000_final",))
+    p_analyzer22 = mp.Process(target=Analyzer, args=(analyzer_queues[21],30,1000000,0,True,"CHR_"+cache_name+"_50000_time", "CHR_"+cache_name+"_50000_regular", "CHR_"+cache_name+"_50000_final",))
+    p_analyzer23 = mp.Process(target=Analyzer, args=(analyzer_queues[22],30,1000000,0,True,"CHR_"+cache_name+"_100000_time", "CHR_"+cache_name+"_100000_regular", "CHR_"+cache_name+"_100000_final",))
+    p_analyzer24 = mp.Process(target=Analyzer, args=(analyzer_queues[23],30,1000000,0,True,"CHR_"+cache_name+"_1000000_time", "CHR_"+cache_name+"_1000000_regular", "CHR_"+cache_name+"_1000000_final",))
 
     cache_name = cache_names[2]
-    p_analyzer25  = mp.Process(target=Analyzer, args=(analyzer_queues[24],30,1000000,True,"CHR_"+cache_name+"_50_time", "CHR_"+cache_name+"_50_regular", "CHR_"+cache_name+"_50_final",))
-    p_analyzer26 = mp.Process(target=Analyzer, args=(analyzer_queues[25],30,1000000,True,"CHR_"+cache_name+"_100_time", "CHR_"+cache_name+"_100_regular", "CHR_"+cache_name+"_100_final",))
-    p_analyzer27 = mp.Process(target=Analyzer, args=(analyzer_queues[26],30,1000000,True,"CHR_"+cache_name+"_200_time", "CHR_"+cache_name+"_200_regular", "CHR_"+cache_name+"_200_final",))
-    p_analyzer28 = mp.Process(target=Analyzer, args=(analyzer_queues[27],30,1000000,True,"CHR_"+cache_name+"_500_time", "CHR_"+cache_name+"_500_regular", "CHR_"+cache_name+"_500_final",))
-    p_analyzer29 = mp.Process(target=Analyzer, args=(analyzer_queues[28],30,1000000,True,"CHR_"+cache_name+"_1000_time", "CHR_"+cache_name+"_1000_regular", "CHR_"+cache_name+"_1000_final",))
-    p_analyzer30 = mp.Process(target=Analyzer, args=(analyzer_queues[29],30,1000000,True,"CHR_"+cache_name+"_2000_time", "CHR_"+cache_name+"_2000_regular", "CHR_"+cache_name+"_2000_final",))
-    p_analyzer31 = mp.Process(target=Analyzer, args=(analyzer_queues[30],30,1000000,True,"CHR_"+cache_name+"_5000_time", "CHR_"+cache_name+"_5000_regular", "CHR_"+cache_name+"_5000_final",))
-    p_analyzer32 = mp.Process(target=Analyzer, args=(analyzer_queues[31],30,1000000,True,"CHR_"+cache_name+"_10000_time", "CHR_"+cache_name+"_10000_regular", "CHR_"+cache_name+"_10000_final",))
-    p_analyzer33 = mp.Process(target=Analyzer, args=(analyzer_queues[32],30,1000000,True,"CHR_"+cache_name+"_20000_time", "CHR_"+cache_name+"_20000_regular", "CHR_"+cache_name+"_20000_final",))
-    p_analyzer34 = mp.Process(target=Analyzer, args=(analyzer_queues[33],30,1000000,True,"CHR_"+cache_name+"_50000_time", "CHR_"+cache_name+"_50000_regular", "CHR_"+cache_name+"_50000_final",))
-    p_analyzer35 = mp.Process(target=Analyzer, args=(analyzer_queues[34],30,1000000,True,"CHR_"+cache_name+"_100000_time", "CHR_"+cache_name+"_100000_regular", "CHR_"+cache_name+"_100000_final",))
-    p_analyzer36 = mp.Process(target=Analyzer, args=(analyzer_queues[35],30,1000000,True,"CHR_"+cache_name+"_1000000_time", "CHR_"+cache_name+"_1000000_regular", "CHR_"+cache_name+"_1000000_final",))
+    p_analyzer25  = mp.Process(target=Analyzer, args=(analyzer_queues[24],30,1000000,0,True,"CHR_"+cache_name+"_50_time", "CHR_"+cache_name+"_50_regular", "CHR_"+cache_name+"_50_final",))
+    p_analyzer26 = mp.Process(target=Analyzer, args=(analyzer_queues[25],30,1000000,0,True,"CHR_"+cache_name+"_100_time", "CHR_"+cache_name+"_100_regular", "CHR_"+cache_name+"_100_final",))
+    p_analyzer27 = mp.Process(target=Analyzer, args=(analyzer_queues[26],30,1000000,0,True,"CHR_"+cache_name+"_200_time", "CHR_"+cache_name+"_200_regular", "CHR_"+cache_name+"_200_final",))
+    p_analyzer28 = mp.Process(target=Analyzer, args=(analyzer_queues[27],30,1000000,0,True,"CHR_"+cache_name+"_500_time", "CHR_"+cache_name+"_500_regular", "CHR_"+cache_name+"_500_final",))
+    p_analyzer29 = mp.Process(target=Analyzer, args=(analyzer_queues[28],30,1000000,0,True,"CHR_"+cache_name+"_1000_time", "CHR_"+cache_name+"_1000_regular", "CHR_"+cache_name+"_1000_final",))
+    p_analyzer30 = mp.Process(target=Analyzer, args=(analyzer_queues[29],30,1000000,0,True,"CHR_"+cache_name+"_2000_time", "CHR_"+cache_name+"_2000_regular", "CHR_"+cache_name+"_2000_final",))
+    p_analyzer31 = mp.Process(target=Analyzer, args=(analyzer_queues[30],30,1000000,0,True,"CHR_"+cache_name+"_5000_time", "CHR_"+cache_name+"_5000_regular", "CHR_"+cache_name+"_5000_final",))
+    p_analyzer32 = mp.Process(target=Analyzer, args=(analyzer_queues[31],30,1000000,0,True,"CHR_"+cache_name+"_10000_time", "CHR_"+cache_name+"_10000_regular", "CHR_"+cache_name+"_10000_final",))
+    p_analyzer33 = mp.Process(target=Analyzer, args=(analyzer_queues[32],30,1000000,0,True,"CHR_"+cache_name+"_20000_time", "CHR_"+cache_name+"_20000_regular", "CHR_"+cache_name+"_20000_final",))
+    p_analyzer34 = mp.Process(target=Analyzer, args=(analyzer_queues[33],30,1000000,0,True,"CHR_"+cache_name+"_50000_time", "CHR_"+cache_name+"_50000_regular", "CHR_"+cache_name+"_50000_final",))
+    p_analyzer35 = mp.Process(target=Analyzer, args=(analyzer_queues[34],30,1000000,0,True,"CHR_"+cache_name+"_100000_time", "CHR_"+cache_name+"_100000_regular", "CHR_"+cache_name+"_100000_final",))
+    p_analyzer36 = mp.Process(target=Analyzer, args=(analyzer_queues[35],30,1000000,0,True,"CHR_"+cache_name+"_1000000_time", "CHR_"+cache_name+"_1000000_regular", "CHR_"+cache_name+"_1000000_final",))
 
     return analyzer_queues, [p_analyzer, p_analyzer2, p_analyzer3, p_analyzer4, p_analyzer5, p_analyzer6, p_analyzer7, p_analyzer8, p_analyzer9, p_analyzer10, p_analyzer11, p_analyzer12, p_analyzer13, p_analyzer14, p_analyzer15, p_analyzer16, p_analyzer17, p_analyzer18, p_analyzer19, p_analyzer20, p_analyzer21, p_analyzer22, p_analyzer23, p_analyzer24, p_analyzer25, p_analyzer26, p_analyzer27, p_analyzer28, p_analyzer29, p_analyzer30, p_analyzer31, p_analyzer32, p_analyzer33, p_analyzer34, p_analyzer35, p_analyzer36]

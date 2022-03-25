@@ -50,7 +50,7 @@ def es_query_scroll(q, index_name, host, port, search_size=10000, stop_after=-1)
         return
 
     # The following query returns for each log in the ES cluster the Epoch time (in second), the path = ID of the object, the content lenght = size of the object and maxage = how long content will be cached
-    search_results = es.search(index=index_name, scroll='2m', _source=["path", "contentlength", "maxage"],
+    search_results = es.search(index=index_name, scroll='2m', _source=["path", "contentlength", "maxage", "livechannel"],
                                query={"match_all": {}}, size=search_size,
                                docvalue_fields=[{"field": "@timestamp", "format": "epoch_second"}],
                                sort=[{"@timestamp": {"order": "asc"}}], track_total_hits=True, version=False)
@@ -105,7 +105,7 @@ def es_query_search_after(q, index_name, host, port, search_size=10000, stop_aft
     pit = es.open_point_in_time(index=index_name, keep_alive="2m")['id']
 
     # The following query returns for each log in the ES cluster the Epoch time (in second), the path = ID of the object, the content lenght = size of the object and maxage = how long content will be cached
-    search_results = es.search(_source=["path", "contentlength", "maxage"], query={"match_all": {}}, size=search_size,
+    search_results = es.search(_source=["path", "contentlength", "maxage", "livechannel"], query={"match_all": {}}, size=search_size,
                                docvalue_fields=[{"field": "@timestamp", "format": "epoch_second"}],
                                sort=[{"@timestamp": {"order": "asc"}}], pit={"id": pit, "keep_alive": "2m"},
                                track_total_hits=True, version=False)
@@ -124,7 +124,7 @@ def es_query_search_after(q, index_name, host, port, search_size=10000, stop_aft
         last_value = search_results["hits"]["hits"][-1]["sort"]
         q.send(search_results["hits"]["hits"])
         total_processed += len(search_results['hits']['hits'])
-        search_results = es.search(_source=["path", "contentlength", "maxage"], search_after=last_value,
+        search_results = es.search(_source=["path", "contentlength", "maxage", "livechannel"], search_after=last_value,
                                    query={"match_all": {}}, size=search_size,
                                    docvalue_fields=[{"field": "@timestamp", "format": "epoch_second"}],
                                    sort=[{"@timestamp": {"order": "asc"}}], pit={"id": pit, "keep_alive": "5m"},
@@ -145,8 +145,11 @@ def cache_simulation(search_results, maxage, cache):
     :param cache: cache used for the simulation
     """
     status_list=[] # list of status (hit, miss or pass) corresponding to the decisions made by the simulator
+    group_ids=[] # list of the group of the object (for example movie identifier), group_ids[0] is the group of the object corresponding to the decision stored in status_list[0]
     for log in search_results:
-        if isinstance(log["_source"]["maxage"], int): obj = Obj(int(log["_source"]["path"]), int(log["_source"]["contentlength"]), int(log["_source"]["maxage"]))
-        else: obj = Obj(int(log["_source"]["path"]), int(log["_source"]["contentlength"]), maxage) # default value if maxage is not indicated
+        if log["_source"]["livechannel"] is None: log["_source"]["livechannel"] = -1 # Default value if livechannel is not indicated
+        if isinstance(log["_source"]["maxage"], int): obj = Obj(int(log["_source"]["path"]), int(log["_source"]["contentlength"]), int(log["_source"]["maxage"]), int(log["_source"]["livechannel"]))
+        else: obj = Obj(int(log["_source"]["path"]), int(log["_source"]["contentlength"]), maxage, int(log["_source"]["livechannel"])) # default value if maxage is not indicated
         status_list.append(cache.recv(float(log["fields"]["@timestamp"][0]), obj)) # keep trace of the status result from the cache simulation
-    return status_list
+        group_ids.append(obj.group)
+    return [status_list, group_ids]
