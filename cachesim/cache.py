@@ -345,15 +345,14 @@ class Clairvoyant(Cache):
         # 1. When time is already passed update the next access time
         while self._cache and min(self._cache.keys())<self.clock:
             min_key = min(self._cache.keys()) # time already passed
-            for obj in self._cache[min_key]: # update the access time for all objects for which the time is passed
-                query = {"bool": {"filter": [{"term": {"path": obj.index}}], "must": [{"range": {"@timestamp":{"gte":self.clock, "format": "epoch_second"}}}], "must_not": [{"terms": {"_id": self._es_ids}}]}}
+            for obj_index in range(len(self._cache[min_key])): # update the access time for all objects for which the time is passed
+                query = {"bool": {"filter": [{"term": {"path": self._cache[min_key][obj_index].index}}], "must": [{"range": {"@timestamp":{"gte": f'{self.clock:.9f}', "format": "epoch_second"}}}], "must_not": [{"terms": {"_id": self._es_ids}}]}}
                 search_results = self._es.search(index=self.__index_name, query=query, size=1, docvalue_fields=[{"field": "@timestamp","format": "epoch_second"}], sort=[{"@timestamp": {"order": "asc"}}], version=False)
-                if len(search_results["hits"]["hits"])>0: self._cache.setdefault(float(search_results["hits"]["hits"][0]["fields"]["@timestamp"][0]), []).append(obj) # if the object is never called again in the future
-                self._cache[min_key].remove(obj)
-                if len(self._cache[min_key]) == 0: del self._cache[min_key] # when we processed every object destroy the dict element
+                if len(search_results["hits"]["hits"])>0: self._cache.setdefault(float(search_results["hits"]["hits"][0]["fields"]["@timestamp"][0]), []).append(self._cache[min_key][obj_index]) # if the object is never called again in the future
+            del self._cache[min_key] # when we processed every object destroy the dict element
 
         # 2. Search the next time access for the new object (search the next timestamp for the object and exclude the objects already processed (ES doc IDs))
-        query = {"bool": {"filter": [{"term": {"path": fetched.index}}], "must": [{"range": {"@timestamp":{"gte":self.clock, "format": "epoch_second"}}}], "must_not": [{"terms": {"_id": self._es_ids}}]}} 
+        query = {"bool": {"filter": [{"term": {"path": fetched.index}}], "must": [{"range": {"@timestamp":{"gte": f'{self.clock:.9f}', "format": "epoch_second"}}}], "must_not": [{"terms": {"_id": self._es_ids}}]}} 
         search_results = self._es.search(index=self.__index_name, query=query, size=1, docvalue_fields=[{"field": "@timestamp","format": "epoch_second"}], sort=[{"@timestamp": {"order": "asc"}}], version=False)
         if len(search_results["hits"]["hits"])==0: return # don't store the object if never called after
         self._cache.setdefault(float(search_results["hits"]["hits"][0]["fields"]["@timestamp"][0]), []).append(fetched)

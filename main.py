@@ -27,8 +27,8 @@ def processes_coordination_single_simulation(index_name, host, port, default_max
     """
 
     # create cache
-    # cache = Clairvoyant(100000, connect_elasticsearch(host, port), index_name)
-    cache = ProtectedFIFOCache(100000)
+    cache = Clairvoyant(10000, connect_elasticsearch(host, port), index_name)
+    # cache = ProtectedFIFOCache(10000)
 
     # define objects
     # x = Obj('x', 1000, 300)
@@ -60,13 +60,13 @@ def processes_coordination_single_simulation(index_name, host, port, default_max
 
     # create the queue and process in charge of analyzing the data resulting from the cache simulation
     analyzer_queue = mp.Queue()
-    # p_analyzer_clairvoyant = mp.Process(target=Analyzer, args=(analyzer_queue,1,1000,3600,True,"CHR_Clairvoyant_time", "CHR_Clairvoyant_regular", "CHR_Clairvoyant_final","CHR_protected_Clairvoyant_movies",))
-    p_analyzer = mp.Process(target=Analyzer, args=(analyzer_queue,1,1000,3600, True,"CHR_protected_FIFO_time", "CHR_protected_regular", "CHR_protected_FIFO_final","CHR_protected_FIFO_movies",))
+    p_analyzer_clairvoyant = mp.Process(target=Analyzer, args=(analyzer_queue,1,1000,3600,True,"CHR_Clairvoyant_time", "CHR_Clairvoyant_regular", "CHR_Clairvoyant_final","CHR_protected_Clairvoyant_movies",))
+    # p_analyzer = mp.Process(target=Analyzer, args=(analyzer_queue,1,1000,3600, True,"CHR_protected_FIFO_time", "CHR_protected_regular", "CHR_protected_FIFO_final","CHR_protected_FIFO_movies",))
 
     # start the processes
     p_query.start()
-    # p_analyzer_clairvoyant.start()
-    p_analyzer.start()
+    p_analyzer_clairvoyant.start()
+    # p_analyzer.start()
 
     # receive the data from the process running the es queries, send them to the process in charge of the cache simulation and send the simulation data to the analyzer
     search_results = parent_query.recv() # data are received from the process fetching es data
@@ -80,7 +80,7 @@ def processes_coordination_single_simulation(index_name, host, port, default_max
             if clairvoyant: status_list.append(cache.recv(float(log["fields"]["@timestamp"][0]), log["_id"], obj))
             else: status_list.append(cache.recv(float(log["fields"]["@timestamp"][0]), obj))
             group_ids.append(obj.group)
-        analyzer_queue.put([int(search_results[-1]["fields"]["@timestamp"][0]), status_list, group_ids]) # last timestamp and list of status are sent to the analyzer at the end of the request
+        analyzer_queue.put([float(search_results[-1]["fields"]["@timestamp"][0]), status_list, group_ids]) # last timestamp and list of status are sent to the analyzer at the end of the request
         search_results = parent_query.recv() # data are received from the process fetching es data
 
     analyzer_queue.put(None) # notify to the analyzer the end of the incoming data
@@ -159,7 +159,7 @@ def processes_coordination_parallel(index_name, host, port, default_maxage=0, pa
         
         # Send results to the analyzers (one individual analyzer for each simulation)
         for index, status in enumerate(status_caches):
-            analyzer_queues[index].put([int(search_results[-1]["fields"]["@timestamp"][0]), status[0], status[1]]) # last timestamp and list of status (status[0]: status of the simulation, status[1] group ids] are sent to the analyzer at the end of the request
+            analyzer_queues[index].put([float(search_results[-1]["fields"]["@timestamp"][0]), status[0], status[1]]) # last timestamp and list of status (status[0]: status of the simulation, status[1] group ids] are sent to the analyzer at the end of the request
 
         search_results = parent_query.recv() # data are received from the process fetching es data
 
@@ -173,7 +173,7 @@ if __name__ == '__main__':
 
     # Check parameter doc from process_coordination function for more details
     processes_coordination_parallel(index_name="batch3-*", host="192.168.100.147", port=9200, default_maxage=300, pagination_technique="Scroll", stop_after=-1)
-    # processes_coordination_single_simulation(index_name="batch3-*", host="192.168.100.147", port=9200, default_maxage=300, pagination_technique="Scroll", stop_after=-1, clairvoyant=False)
+    # processes_coordination_single_simulation(index_name="clairvoyant", host="192.168.100.143", port=9200, default_maxage=300, pagination_technique="Scroll", stop_after=-1, clairvoyant=True)
 
     end = time.time()
 
