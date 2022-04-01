@@ -100,8 +100,8 @@ def processes_coordination_parallel(index_name, host, port, default_maxage=0, pa
     :param stop_after: -1 means that we iterate over the whole index, other values stop the program after the number indicated (for example 100 to run the program only on the 100 first values from the index)
     """
 
-    # caches = load.all_protected_caches()
-    caches = load.one_each_cache(10000)
+    caches = load.all_normal_caches()
+    # caches = load.one_each_cache(10000)
 
     
     # define objects
@@ -132,8 +132,8 @@ def processes_coordination_parallel(index_name, host, port, default_maxage=0, pa
         fail_message("Pagination technique is invalid (should be scroll or search_after): please change parameter in main function")
         return 
 
-    # analyzer_queues, p_analyzers = load.all_analyzers(["PFIFO", "PLRU", "PLFU"])
-    analyzer_queues, p_analyzers = load.one_each_analyzers()
+    analyzer_queues, p_analyzers = load.all_analyzers(["FIFO", "LRU", "LFU"])
+    # analyzer_queues, p_analyzers = load.one_each_analyzers()
 
     assert len(caches) == len(analyzer_queues) == len(p_analyzers), f"The number of caches should be equal to the number of analyzers!"
     
