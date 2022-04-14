@@ -1,5 +1,5 @@
 import multiprocessing as mp
-from cachesim import FIFOCache, ProtectedFIFOCache, LRUCache, ProtectedLRUCache, Clairvoyant, LFUCache, ProtectedLFUCache, Analyzer
+from cachesim import FIFOCache, ProtectedFIFOCache, LRUCache, ProtectedLRUCache, LSOCache, ProtectedLSOCache, RANCache,  ProtectedRANCache, Clairvoyant, LFUCache, ProtectedLFUCache, Analyzer
 
 def protected_FIFO_caches():
     # create cache
@@ -47,6 +47,38 @@ def protected_LFU_caches():
     cache10 = ProtectedLFUCache(50000)
     cache11 = ProtectedLFUCache(100000)
     cache12 = ProtectedLFUCache(1000000)
+    return [cache, cache2, cache3, cache4, cache5, cache6, cache7, cache8, cache9, cache10, cache11, cache12]
+
+def protected_LSO_caches():
+    # create cache
+    cache = ProtectedLSOCache(50,  write_log=False)
+    cache2 = ProtectedLSOCache(100)
+    cache3 = ProtectedLSOCache(200)
+    cache4 = ProtectedLSOCache(500)
+    cache5 = ProtectedLSOCache(1000)
+    cache6 = ProtectedLSOCache(2000)
+    cache7 = ProtectedLSOCache(5000)
+    cache8 = ProtectedLSOCache(10000)
+    cache9 = ProtectedLSOCache(20000)
+    cache10 = ProtectedLSOCache(50000)
+    cache11 = ProtectedLSOCache(100000)
+    cache12 = ProtectedLSOCache(1000000)
+    return [cache, cache2, cache3, cache4, cache5, cache6, cache7, cache8, cache9, cache10, cache11, cache12]
+
+def protected_RAN_caches():
+    # create cache
+    cache = ProtectedRANCache(50,  write_log=False)
+    cache2 = ProtectedRANCache(100)
+    cache3 = ProtectedRANCache(200)
+    cache4 = ProtectedRANCache(500)
+    cache5 = ProtectedRANCache(1000)
+    cache6 = ProtectedRANCache(2000)
+    cache7 = ProtectedRANCache(5000)
+    cache8 = ProtectedRANCache(10000)
+    cache9 = ProtectedRANCache(20000)
+    cache10 = ProtectedRANCache(50000)
+    cache11 = ProtectedRANCache(100000)
+    cache12 = ProtectedRANCache(1000000)
     return [cache, cache2, cache3, cache4, cache5, cache6, cache7, cache8, cache9, cache10, cache11, cache12]
 
 def one_each_cache(size_cache):
@@ -100,6 +132,38 @@ def all_protected_caches():
     cache35 = ProtectedLFUCache(100000)
     cache36 = ProtectedLFUCache(1000000)
     return [cache, cache2, cache3, cache4, cache5, cache6, cache7, cache8, cache9, cache10, cache11, cache12, cache13, cache14, cache15, cache16, cache17, cache18, cache19, cache20, cache21, cache22, cache23, cache24, cache25, cache26, cache27, cache28, cache29, cache30, cache31, cache32, cache33, cache34, cache35, cache36]
+
+def LSO_caches():
+    # create cache
+    cache = LSOCache(50,  write_log=False)
+    cache2 = LSOCache(100)
+    cache3 = LSOCache(200)
+    cache4 = LSOCache(500)
+    cache5 = LSOCache(1000)
+    cache6 = LSOCache(2000)
+    cache7 = LSOCache(5000)
+    cache8 = LSOCache(10000)
+    cache9 = LSOCache(20000)
+    cache10 = LSOCache(50000)
+    cache11 = LSOCache(100000)
+    cache12 = LSOCache(1000000)
+    return [cache, cache2, cache3, cache4, cache5, cache6, cache7, cache8, cache9, cache10, cache11, cache12]
+
+def RAN_caches():
+    # create cache
+    cache = RANCache(50,  write_log=False)
+    cache2 = RANCache(100)
+    cache3 = RANCache(200)
+    cache4 = RANCache(500)
+    cache5 = RANCache(1000)
+    cache6 = RANCache(2000)
+    cache7 = RANCache(5000)
+    cache8 = RANCache(10000)
+    cache9 = RANCache(20000)
+    cache10 = RANCache(50000)
+    cache11 = RANCache(100000)
+    cache12 = RANCache(1000000)
+    return [cache, cache2, cache3, cache4, cache5, cache6, cache7, cache8, cache9, cache10, cache11, cache12]
 
 def all_normal_caches():
     # Protected FIFO

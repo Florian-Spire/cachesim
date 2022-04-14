@@ -1,6 +1,7 @@
-from asyncore import write
+import bisect
 from cachesim import Obj, Status
 import logging
+import random
 import unittest
 from typing import Optional
 from abc import ABC, abstractmethod
@@ -203,7 +204,7 @@ class LRUCache(Cache):
     def __init__(self, maxsize: int, logger=None, write_log=False):
         super().__init__(maxsize, logger, write_log)
 
-        # implement a FIFO for the cache itself
+        # implement a LRU for the cache itself
         self._cache = []
 
     def _lookup(self, requested: Obj) -> Optional[Obj]:
@@ -291,6 +292,86 @@ class ProtectedLFUCache(LFUCache):
     """
     Same as LFU cache, but big (> 10% of total cache size) object are not allowed to enter the cache.
     """
+    def _admit(self, fetched: Obj) -> bool:
+        # allow only small objects to enter the cache
+        return fetched.size <= self.maxsize * 0.1
+
+class LSOCache(Cache):
+    """
+    Largest size out cache model.
+    """
+
+    def __init__(self, maxsize: int, logger=None, write_log=False):
+        super().__init__(maxsize, logger, write_log)
+
+        # implement a FIFO for the cache itself
+        self._cache = []
+
+    def _lookup(self, requested: Obj) -> Optional[Obj]:
+        # check if object already in cache
+        return next((x for x in self._cache if x == requested), None)
+
+    def _admit(self, fetched: Obj) -> bool:
+        return True
+
+    def _store(self, fetched: Obj):
+        # put the new object in the sorted list by size
+        bisect.insort(self._cache, fetched)
+
+        # trigger cache eviction if needed
+        while fetched.size <= self.maxsize < sum(self._cache):
+            self._cache.pop() # delete the object with the biggest size
+
+
+    def _delete_expired(self, time: float):
+        self._cache = [obj for obj in self._cache if not obj.isexpired(time)]
+
+
+class ProtectedLSOCache(LSOCache):
+    """
+    Same as LSOCache, but big (> 10% of total cache size) object are not allowed to enter the cache.
+    """
+
+    def _admit(self, fetched: Obj) -> bool:
+        # allow only small objects to enter the cache
+        return fetched.size <= self.maxsize * 0.1
+
+class RANCache(Cache):
+    """
+    Random cache model.
+    """
+
+    def __init__(self, maxsize: int, logger=None, write_log=False):
+        super().__init__(maxsize, logger, write_log)
+
+        # implement a FIFO for the cache itself
+        self._cache = []
+
+    def _lookup(self, requested: Obj) -> Optional[Obj]:
+        # check if object already in cache
+        return next((x for x in self._cache if x == requested), None)
+
+    def _admit(self, fetched: Obj) -> bool:
+        return True
+
+    def _store(self, fetched: Obj):
+        # put the new object at the end of the cache
+        self._cache.append(fetched)
+
+        # trigger cache eviction if needed
+        while fetched.size <= self.maxsize < sum(self._cache):
+            self._cache.pop(random.randrange(len(self._cache)))
+
+
+    def _delete_expired(self, time: float):
+        self._cache = [obj for obj in self._cache if not obj.isexpired(time)]
+
+
+class ProtectedRANCache(RANCache):
+    """
+    Same as RANCache, but big (> 10% of total cache size) object are not allowed to enter the cache.
+    """
+
     def _admit(self, fetched: Obj) -> bool:
         # allow only small objects to enter the cache
         return fetched.size <= self.maxsize * 0.1

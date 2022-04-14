@@ -66,6 +66,10 @@ class Obj:
         assert isinstance(other, int), f"Operator radd has been implemented only for Obj type."
         return other + self.size
 
+    def __lt__(self, other):
+        """For inserting in bisect list"""
+        return self.size < other.size
+
     def __eq__(self, other):
         """To implement in operator"""
         assert isinstance(other, Obj), f"Operator EQ has been implemented only for Obj type."
