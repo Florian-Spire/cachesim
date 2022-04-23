@@ -29,6 +29,10 @@ class Obj:
         return self._maxage
 
     @property
+    def size_not_fetched(self) -> int:
+        return self._size
+
+    @property
     def group(self):
         return self._group
 
