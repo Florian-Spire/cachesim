@@ -12,17 +12,20 @@ class Analyzer:
     """
 
     def __init__(self, cache_queue: multiprocessing.Queue, writing_frquency_time=60, writing_frequency_number=0, movies_time_interval = 0, CHR_final = True, served_from_cache=True,
-                 file_name_frequency_time="CHR_by_time", file_name_frequency_number="CHR_regular", file_name_CHR_final="CHR_final", file_name_CHR_by_movie = "CHR_movies", file_name_served_from_cache="trafic_served_from_cache"):
+                 file_name_frequency_time="CHR_by_time", file_name_frequency_number="CHR_regular", file_name_CHR_final="CHR_final", file_name_CHR_by_movie = "CHR_movies", file_name_served_from_cache="traffic_served_from_cache"):
         """
         Analyzer initialization.
         :param cache_queue: queue between the process in charge of the caching simulation and the analyzer process
-        :param writing_frequency_number: frequency used to write the measurements results in txt file (0 for not writing anything in file), e.g: 1,000 will write the results once every 1,000 objects processed, 0 to disable
         :param writing_frquency_time: frequency in time to write results in file (in seconds), e.g: 60 means that the results will be written once every minutes (approximately, results are only sent periodically to the analyzer), 0 to disable
+        :param writing_frequency_number: frequency used to write the measurements results in txt file (0 for not writing anything in file), e.g: 1,000 will write the results once every 1,000 objects processed, 0 to disable
         :param movies_time_interval: interval in time to which statistics about the cache hit ratio of the different movies should be written in file
-        :param file_name_frequency_time: name of the file where the analyzes by time should be written
-        :param file_name_frequency_number: name of the file where the analyzes by frequency should be written
         :param CHR_final: True if the final cache hit ratio should be written in file at the end, false otherwise
         :param served_from_cache: True for counting the size of the objects served from cache (e.g 103gb/200gb were served from cache)
+        :param file_name_frequency_time: name of the file where the analyzes by time should be written
+        :param file_name_frequency_number: name of the file where the analyzes by frequency should be written
+        :param file_name_CHR_final: name of the file where the final CHR should be written
+        :param file_name_CHR_by_movie: name of the file where the analyzes by movie should be written
+        :param file_name_served_from_cache: name of the file where the analyzes for the traffic served from the cache should be written
         """
         self.__q = cache_queue  # Queue between the process managing the analyzer process and the cache simulation process (data are received to this analyzer from the cache simulation process)
 
@@ -37,7 +40,7 @@ class Analyzer:
         self.__last_total = 0  # Keep trace of the last total number of analyzes done
 
         self.__served_from_cache = served_from_cache
-        self.__trafic_served_from_cache = pd.DataFrame() # Dataframe to store trafic served from cache (e.g 10gb hit, 9gb miss, 1gb pass)
+        self.__traffic_served_from_cache = pd.DataFrame() # Dataframe to store traffic served from cache (e.g 10gb hit, 9gb miss, 1gb pass)
         self.__file_name_served_from_cache = file_name_served_from_cache
         
         self.__CHR_final = CHR_final  # Look at CHR_final parameter description for more info
@@ -127,7 +130,7 @@ class Analyzer:
 
             if self.__served_from_cache:
                 # Associate the cache status (hit, miss, pass) with the size of the object and concatenate it with the previous obtained results. Then group by cache status and sum the results
-                self.__trafic_served_from_cache = pd.concat([self.__trafic_served_from_cache, pd.DataFrame({'cache_status': map(str, status[1]), 'size': status[2]})]).groupby(by='cache_status', as_index=False)['size'].sum()
+                self.__traffic_served_from_cache = pd.concat([self.__traffic_served_from_cache, pd.DataFrame({'cache_status': map(str, status[1]), 'size': status[2]})]).groupby(by='cache_status', as_index=False)['size'].sum()
 
             status = self.__q.get()
 
@@ -147,7 +150,7 @@ class Analyzer:
                 csv_writer.writerow([self.__hit + self.__miss + self.__pass, self.cache_hit_ratio()*100, self.__hit, self.__miss, self.__pass])
         
         if self.__served_from_cache:
-            self.__trafic_served_from_cache.to_csv("./results/" + self.__file_name_served_from_cache + ".csv", encoding='utf-8', index=False)
+            self.__traffic_served_from_cache.to_csv("./results/" + self.__file_name_served_from_cache + ".csv", encoding='utf-8', index=False)
 
     def hit(self):
         """

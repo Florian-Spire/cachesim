@@ -21,6 +21,12 @@ def connect_elasticsearch(domain, port):
 
 
 def fail_message(message, write_in_file=True):
+    """
+    Program fail: print a message and optionally store the error message in a file on the disk
+
+    :param message: Fail message
+    :param write_in_file: True to write the fail message in a disk file, false otherwise
+    """
     print(message, file=sys.stderr)
     if write_in_file:
         with open("./results/" + "fail.txt", 'w', encoding='utf-8') as f:
