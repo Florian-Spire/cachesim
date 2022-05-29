@@ -3,7 +3,7 @@ from itertools import repeat
 from multiprocessing import Pool
 import time
 
-from cachesim import FIFOCache, ProtectedFIFOCache, Clairvoyant, Analyzer
+from cachesim import FIFOCache, ProtectedFIFOCache, Clairvoyant, Analyzer,  LFUCache, LSOCache, RANCache, LRUCache, SSOCache
 from cachesim import load
 from logs_replayer import *
 
@@ -28,7 +28,7 @@ def processes_coordination_single_simulation(index_name, host, port, default_max
 
     # create cache
     cache = Clairvoyant(10000, connect_elasticsearch(host, port), index_name)
-    # cache = ProtectedFIFOCache(10000)
+    # cache = LSOCache(10000, write_log=True)
 
     # define objects
     # x = Obj('x', 1000, 300)
@@ -60,8 +60,8 @@ def processes_coordination_single_simulation(index_name, host, port, default_max
 
     # create the queue and process in charge of analyzing the data resulting from the cache simulation
     analyzer_queue = mp.Queue()
-    p_analyzer_clairvoyant = mp.Process(target=Analyzer, args=(analyzer_queue,1,1000,3600,True,"CHR_Clairvoyant_time", "CHR_Clairvoyant_regular", "CHR_Clairvoyant_final","CHR_protected_Clairvoyant_movies",))
-    # p_analyzer = mp.Process(target=Analyzer, args=(analyzer_queue,1,1000,3600, True,"CHR_protected_FIFO_time", "CHR_protected_regular", "CHR_protected_FIFO_final","CHR_protected_FIFO_movies",))
+    p_analyzer_clairvoyant = mp.Process(target=Analyzer, args=(analyzer_queue,1,1000,3600,True,True,"CHR_Clairvoyant_time", "CHR_Clairvoyant_regular", "CHR_Clairvoyant_final","CHR_Clairvoyant_movies", "trafic_served_from_cache_Clairvoyant",))
+    # p_analyzer = mp.Process(target=Analyzer, args=(analyzer_queue,1,1000,3600, True,True,"CHR_LSO_time", "CHR_LSO_regular", "CHR_LSO_final", "CHR_LSO_movies", "trafic_served_from_cache_LSO",))
 
     # start the processes
     p_query.start()
@@ -171,7 +171,7 @@ if __name__ == '__main__':
 
     # Check parameter doc from process_coordination function for more details
     processes_coordination_parallel(index_name="batch3-*", host="192.168.100.147", port=9200, default_maxage=300, pagination_technique="Scroll", stop_after=-1)
-    # processes_coordination_single_simulation(index_name="clairvoyant", host="192.168.100.143", port=9200, default_maxage=300, pagination_technique="Scroll", stop_after=-1, clairvoyant=True)
+    # processes_coordination_single_simulation(index_name="clairvoyant", host="192.168.100.147", port=9200, default_maxage=300, pagination_technique="Scroll", stop_after=-1, clairvoyant=True)
 
     end = time.time()
 

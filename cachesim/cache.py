@@ -249,10 +249,7 @@ class LFUCache(Cache):
 
     def __init__(self, maxsize: int, logger=None, write_log=False):
         super().__init__(maxsize, logger, write_log)
-
-        # implement a FIFO for the cache itself
         self._cache = []
-
         self._frequency = {}
 
     def _lookup(self, requested: Obj) -> Optional[Obj]:
@@ -303,8 +300,6 @@ class LSOCache(Cache):
 
     def __init__(self, maxsize: int, logger=None, write_log=False):
         super().__init__(maxsize, logger, write_log)
-
-        # implement a FIFO for the cache itself
         self._cache = []
 
     def _lookup(self, requested: Obj) -> Optional[Obj]:
@@ -343,8 +338,6 @@ class SSOCache(Cache):
 
     def __init__(self, maxsize: int, logger=None, write_log=False):
         super().__init__(maxsize, logger, write_log)
-
-        # implement a FIFO for the cache itself
         self._cache = []
 
     def _lookup(self, requested: Obj) -> Optional[Obj]:
@@ -360,7 +353,7 @@ class SSOCache(Cache):
 
         # trigger cache eviction if needed
         while fetched.size <= self.maxsize < sum(self._cache):
-            self._cache.pop(0) # delete the object with the biggest size
+            self._cache.pop(0) # delete the object with the smallest size
             
     def _delete_expired(self, time: float):
         self._cache = [obj for obj in self._cache if not obj.isexpired(time)]
@@ -382,8 +375,6 @@ class RANCache(Cache):
 
     def __init__(self, maxsize: int, logger=None, write_log=False):
         super().__init__(maxsize, logger, write_log)
-
-        # implement a FIFO for the cache itself
         self._cache = []
 
     def _lookup(self, requested: Obj) -> Optional[Obj]:
